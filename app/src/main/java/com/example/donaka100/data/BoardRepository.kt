@@ -3,6 +3,7 @@ package com.example.donaka100.data
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import kotlin.time.Duration.Companion.milliseconds
 
 interface BoardRepository {
     suspend fun getBoard(): BoardData
@@ -10,17 +11,17 @@ interface BoardRepository {
 }
 
 /** Faux backend : tout à 0, ou les valeurs du maquette avec avecDemo = true */
-class FakeBoardRepository(avecDemo: Boolean = false) : BoardRepository {
+class FakeBoardRepository(avecDemo: Boolean = true) : BoardRepository {
 
     private var data = if (avecDemo) donneesDemo() else BoardData()
 
     override suspend fun getBoard(): BoardData {
-        delay(800)                       // simule le réseau (on voit le skeleton)
+        delay(800.milliseconds)                       // simule le réseau (on voit le skeleton)
         return data
     }
 
     override suspend fun ajouterVente(vente: NouvelleVente) {
-        delay(300)
+        delay(300.milliseconds)
         val heure = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
         val operation = Operation(
             id = System.currentTimeMillis().toString(),

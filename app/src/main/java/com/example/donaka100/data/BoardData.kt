@@ -8,7 +8,6 @@ data class Operation(
     val montant: Long = 0        // positif = entrée, négatif = sortie
 )
 
-enum class StatutStock { ALERTE, SEUIL_JUSTE, OK }
 
 data class StockSurveille(
     val id: String = "",
@@ -18,12 +17,7 @@ data class StockSurveille(
 ) {
     // Calculé ici, donc le backend n'envoie que des quantités brutes
     val statut: StatutStock
-        get() = when {
-            seuilKg <= 0 -> StatutStock.OK
-            quantiteKg < seuilKg -> StatutStock.ALERTE
-            quantiteKg <= seuilKg * 1.25 -> StatutStock.SEUIL_JUSTE
-            else -> StatutStock.OK
-        }
+        get() = statutStock(quantiteKg.toDouble(), seuilKg.toDouble())
 }
 
 data class LigneCommande(
@@ -32,7 +26,7 @@ data class LigneCommande(
 )
 
 data class BoardData(
-    val nomUtilisateur: String = "Hoby",
+    val nomUtilisateur: String = "",
     val fournilOuvert: Boolean = false,
     val chiffreAffaires: Long = 0,
     val achatsEtFrais: Long = 0,
@@ -47,7 +41,7 @@ data class BoardData(
     val tresorerie: Long get() = chiffreAffaires - achatsEtFrais
     val totalPiecesDemain: Int get() = commandesDemain.sumOf { it.quantite }
     val stocksSousSurveillance: List<StockSurveille>
-        get() = stocks.filter { it.statut != StatutStock.OK }
+        get() = stocks.filter { it.statut == StatutStock.CRITIQUE || it.statut == StatutStock.SEUIL_JUSTE }
 }
 
 /** Ce que l'app envoie au backend quand on enregistre une vente */

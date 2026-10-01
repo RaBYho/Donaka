@@ -2,6 +2,8 @@ package com.example.donaka100.data
 
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.LocalDateTime
+import java.util.UUID
 
 object FakeBackend {
     var clients: List<Client> = emptyList()
@@ -11,7 +13,17 @@ object FakeBackend {
     var ingredients: List<Ingredient> = emptyList()   // provisoire, géré par Stock plus tard
     var fournees: List<Fournee> = emptyList()
     var compteur: Int = 0
+    var mouvements: List<MouvementStock> = emptyList()
 
+    fun noter(
+        ingredientId: String, nom: String, type: TypeMouvementStock, delta: Double,
+        motif: String, montant: Long? = null, fournisseur: String = ""
+    ) {
+        mouvements = mouvements + MouvementStock(
+            UUID.randomUUID().toString(), ingredientId, nom, LocalDateTime.now(),
+            type, delta, motif, montant, fournisseur
+        )
+    }
     private var demoCharge = false
 
     fun chargerDemo() {
@@ -19,10 +31,11 @@ object FakeBackend {
         demoCharge = true
 
         ingredients = listOf(
-            Ingredient("i1", "Farine T55", UniteStock.KG, 45.0, 50.0),
-            Ingredient("i2", "Sucre Blanc", UniteStock.KG, 10.0, 5.0),
-            Ingredient("i3", "Beurre 82%", UniteStock.KG, 1.5, 3.0),
-            Ingredient("i4", "Levure", UniteStock.KG, 2.0, 0.5)
+            Ingredient("i1", "Farine T55", UniteStock.KG, 45.0, 15.0, "Poudres & Farines", "Grossiste Anosibe"),
+            Ingredient("i2", "Sucre Blanc", UniteStock.KG, 10.0, 3.0, "Épicerie sèche", "Grossiste Anosibe"),
+            Ingredient("i3", "Beurre 82%", UniteStock.KG, 1.5, 5.0, "Produits frais", "Laiterie du Centre"),
+            Ingredient("i4", "Levure", UniteStock.KG, 0.4, 1.0, "Produits frais", "Biospringer Madagascar"),
+            Ingredient("i5", "Chocolat Noir 64%", UniteStock.KG, 6.5, 2.0, "Épicerie sèche", "Chocolaterie Robert")
         )
 
         produits = listOf(
@@ -119,6 +132,14 @@ object FakeBackend {
                 listOf(LigneFournee("p3", "Brioche Pur Beurre", 48, 48)),
                 listOf(Consommation("i1", "Farine T55", UniteStock.KG, 6.0, 6.0))
             )
+        )
+        mouvements = listOf(
+            MouvementStock("m1", "i1", "Farine T55", hier.atTime(9, 10), TypeMouvementStock.ENTREE,
+                50.0, "Achat", 175_000, "Grossiste Anosibe"),
+            MouvementStock("m2", "i3", "Beurre 82%", hier.atTime(9, 40), TypeMouvementStock.ENTREE,
+                6.0, "Achat", 84_000, "Laiterie du Centre"),
+            MouvementStock("m3", "i2", "Sucre Blanc", auj.atTime(7, 0), TypeMouvementStock.AJUSTEMENT,
+                -0.5, "Ajustement après comptage")
         )
     }
 }

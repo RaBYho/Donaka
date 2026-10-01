@@ -12,6 +12,7 @@ import com.example.donaka100.ui.theme.Fond
 import com.example.donaka100.ui.screens.CommandeScreen
 import com.example.donaka100.ui.screens.BoardScreen
 import com.example.donaka100.ui.screens.FourneauxScreen
+import com.example.donaka100.ui.screens.StockScreen
 
 @Composable
 fun DonakaApp() {
@@ -28,7 +29,7 @@ fun DonakaApp() {
                     onVoirDepenses = { courant = Destination.DEPENSES })
                 Destination.COMMANDE -> CommandeScreen()
                 Destination.FOURNEAUX -> FourneauxScreen()
-                Destination.STOCK -> PagePlaceholder("Stock")
+                Destination.STOCK -> StockScreen()
                 Destination.DEPENSES -> PagePlaceholder("Dépenses")
             }
         }

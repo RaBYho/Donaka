@@ -35,7 +35,7 @@ fun BoardStocksCard(stocks: List<StockSurveille>, isLoading: Boolean, onGerer: (
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(s.nom, fontWeight = FontWeight.SemiBold, color = TexteFonce)
-                        val alerte = s.statut == StatutStock.ALERTE
+                        val alerte = s.statut == StatutStock.CRITIQUE
                         Text(
                             text = if (alerte) "Reste ${s.quantiteKg} kg (min. ${s.seuilKg} kg)"
                             else "Reste ${s.quantiteKg} kg (seuil ${s.seuilKg} kg)",
@@ -44,8 +44,8 @@ fun BoardStocksCard(stocks: List<StockSurveille>, isLoading: Boolean, onGerer: (
                         )
                     }
                     DonakaBadge(
-                        texte = if (s.statut == StatutStock.ALERTE) "Alerte" else "Seuil juste",
-                        type = if (s.statut == StatutStock.ALERTE) TypeBadge.ERREUR else TypeBadge.ALERTE
+                        texte = if (s.statut == StatutStock.CRITIQUE) "Critique" else "Seuil juste",
+                        type = if (s.statut == StatutStock.CRITIQUE) TypeBadge.ERREUR else TypeBadge.ALERTE
                     )
                 }
             }

@@ -21,7 +21,7 @@ interface FourneauxRepository {
     suspend fun annulerFournee(id: String)
 }
 
-class FakeFourneauxRepository(avecDemo: Boolean = false) : FourneauxRepository {
+class FakeFourneauxRepository(avecDemo: Boolean = true) : FourneauxRepository {
 
     private val db = FakeBackend
     private class Resolution(val recette: List<LigneRecette>, val pivotId: String?, val nbCrees: Int)
@@ -55,7 +55,7 @@ class FakeFourneauxRepository(avecDemo: Boolean = false) : FourneauxRepository {
     override suspend fun getFournees() = db.fournees
 
     override suspend fun creerProduit(p: NouveauProduit): Int {
-        delay(300)
+        delay(300.milliseconds)
         val r = resoudre(p)
         db.produits += Produit(
                     id = UUID.randomUUID().toString(), nom = p.nom.nettoyerNom(),
@@ -121,6 +121,9 @@ class FakeFourneauxRepository(avecDemo: Boolean = false) : FourneauxRepository {
         db.fournees += Fournee(
                     UUID.randomUUID().toString(), date, LocalDateTime.now(), lignesFournee, consommations
                 )
+        consommations.filter { it.deduit > 0 }.forEach {
+            db.noter(it.ingredientId, it.nom, TypeMouvementStock.SORTIE, -it.deduit, "Production")
+        }
     }
 
     override suspend fun annulerFournee(id: String) {
@@ -133,6 +136,9 @@ class FakeFourneauxRepository(avecDemo: Boolean = false) : FourneauxRepository {
         }
         db.fournees = db.fournees.map {
             if (it.id == id) it.copy(annuleeA = LocalDateTime.now()) else it
+        }
+        f.consommations.filter { it.deduit > 0 }.forEach {
+            db.noter(it.ingredientId, it.nom, TypeMouvementStock.ENTREE, it.deduit, "Annulation de fournée")
         }
     }
 
