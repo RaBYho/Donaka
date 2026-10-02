@@ -94,13 +94,13 @@ fun CommandeScreen(vm: CommandeViewModel = viewModel()) {
                         OngletCommande.CREANCES -> DonakaSearchBar(
                             value = etat.recherche,
                             onValueChange = vm::onRecherche,
-                            placeholder = "Rechercher par nom, téléphone…"
+                            placeholder = "Rechercher…"
                         )
                         OngletCommande.HISTORIQUE -> {
                             DonakaSearchBar(
                                 value = etat.rechercheHistorique,
                                 onValueChange = vm::onRechercheHistorique,
-                                placeholder = "Rechercher par client, bon #ENC…"
+                                placeholder = "Rechercher…"
                             )
                             DonakaFilterChips(
                                 options = FiltreHistorique.entries,
