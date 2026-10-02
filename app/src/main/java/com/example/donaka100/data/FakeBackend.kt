@@ -17,11 +17,14 @@ object FakeBackend {
 
     fun noter(
         ingredientId: String, nom: String, type: TypeMouvementStock, delta: Double,
-        motif: String, montant: Long? = null, fournisseur: String = ""
+        motif: String, montant: Long? = null, fournisseur: String = "",
+        estAchat: Boolean = false, mode: ModeReglement? = null
     ) {
+        val unite = ingredients.firstOrNull { it.id == ingredientId }?.unite ?: UniteStock.KG
         mouvements = mouvements + MouvementStock(
-            UUID.randomUUID().toString(), ingredientId, nom, LocalDateTime.now(),
-            type, delta, motif, montant, fournisseur
+            id = UUID.randomUUID().toString(), ingredientId = ingredientId, ingredientNom = nom,
+            dateHeure = LocalDateTime.now(), type = type, quantite = delta, motif = motif,
+            montant = montant, fournisseur = fournisseur, estAchat = estAchat, mode = mode, unite = unite
         )
     }
     private var demoCharge = false
@@ -135,9 +138,15 @@ object FakeBackend {
         )
         mouvements = listOf(
             MouvementStock("m1", "i1", "Farine T55", hier.atTime(9, 10), TypeMouvementStock.ENTREE,
-                50.0, "Achat", 175_000, "Grossiste Anosibe"),
+                50.0, "Achat", 175_000, "Grossiste Anosibe", estAchat = true, mode = ModeReglement.ESPECES),
             MouvementStock("m2", "i3", "Beurre 82%", hier.atTime(9, 40), TypeMouvementStock.ENTREE,
-                6.0, "Achat", 84_000, "Laiterie du Centre"),
+                6.0, "Achat", 84_000, "Laiterie du Centre", estAchat = true, mode = ModeReglement.ESPECES),
+            MouvementStock("m5", "i4", "Levure", hier.atTime(8, 45), TypeMouvementStock.ENTREE,
+                2.0, "Achat", 24_000, "Biospringer Madagascar", estAchat = true, mode = ModeReglement.MVOLA),
+            MouvementStock("m4", "i5", "Chocolat Noir 64%", auj.atTime(10, 15), TypeMouvementStock.ENTREE,
+                2.0, "Achat", 56_000, "Chocolaterie Robert", estAchat = true, mode = ModeReglement.MVOLA),
+            MouvementStock("m6", "i2", "Sucre Blanc", auj.atTime(7, 30), TypeMouvementStock.ENTREE,
+                5.0, "Achat", null, "Grossiste Anosibe", estAchat = true, mode = ModeReglement.ESPECES),
             MouvementStock("m3", "i2", "Sucre Blanc", auj.atTime(7, 0), TypeMouvementStock.AJUSTEMENT,
                 -0.5, "Ajustement après comptage")
         )

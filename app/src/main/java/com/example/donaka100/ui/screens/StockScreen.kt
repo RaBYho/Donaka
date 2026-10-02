@@ -22,7 +22,9 @@ import com.example.donaka100.ui.forms.AjustementSheet
 import com.example.donaka100.ui.forms.IngredientFormSheet
 import com.example.donaka100.ui.screens.stock.InventaireTab
 import com.example.donaka100.ui.theme.*
-
+import com.example.donaka100.data.MouvementStock
+import com.example.donaka100.ui.forms.ModifierAchatSheet
+import com.example.donaka100.ui.screens.stock.AchatsTab
 private sealed interface DialogueStock {
     data object Nouveau : DialogueStock
     data class Edition(val ingredient: Ingredient) : DialogueStock
@@ -30,6 +32,9 @@ private sealed interface DialogueStock {
     data class Acheter(val nom: String = "", val fournisseur: String = "") : DialogueStock
     data class Supprimer(val ingredient: Ingredient) : DialogueStock
     data class Bloque(val ingredient: Ingredient, val produits: List<String>) : DialogueStock
+    data class ModifierAchat(val achat: MouvementStock) : DialogueStock
+    data class AnnulerAchat(val achat: MouvementStock) : DialogueStock
+    data class AnnulationBloquee(val raison: String) : DialogueStock
 }
 
 @Composable
@@ -51,7 +56,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
                     Text(
                         when (etat.onglet) {
                             OngletStock.INVENTAIRE -> "Matières premières"
-                            OngletStock.ACHATS -> "Historique"
+                            OngletStock.HISTORIQUE -> "Historique"
                             OngletStock.FOURNISSEURS -> "Fournisseurs"
                         },
                         fontSize = 12.sp, color = TexteGris
@@ -88,7 +93,17 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
                             else DialogueStock.Bloque(ing, utilises.map { it.nom })
                     }
                 )
-
+                etat.onglet == OngletStock.HISTORIQUE -> AchatsTab(
+                    etat = etat, modifier = Modifier.weight(1f),
+                    onAchat = { dialogue = DialogueStock.Acheter() },
+                    onRecherche = vm::onRechercheAchat,
+                    onFiltre = vm::onFiltreAchat,
+                    onModifier = { dialogue = DialogueStock.ModifierAchat(it) },
+                    onAnnuler = { m ->
+                        val raison = etat.raisonBlocageAnnulation(m)
+                        dialogue = if (raison == null) DialogueStock.AnnulerAchat(m) else DialogueStock.AnnulationBloquee(raison)
+                    }
+                )
                 else -> DonakaEmptyState(
                     titre = "Bientôt disponible",
                     message = "L'onglet « ${etat.onglet.libelle} » arrive dans une prochaine étape.",
@@ -149,6 +164,28 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
                     color = TexteGris
                 )
             },
+            confirmButton = { DonakaButton("Compris", onClick = { dialogue = null }, style = StyleBouton.TEXTE) }
+        )
+        is DialogueStock.ModifierAchat -> ModifierAchatSheet(
+            achat = d.achat, fournisseurs = etat.fournisseurs,
+            onDismiss = { dialogue = null },
+            onSave = { vm.modifierAchat(d.achat, it); dialogue = null }
+        )
+
+        is DialogueStock.AnnulerAchat -> DonakaConfirmDialog(
+            titre = "Annuler cet achat ?",
+            message = "${d.achat.quantite.avecUnite(d.achat.unite)} de ${d.achat.ingredientNom} seront retirés du stock." +
+                    (d.achat.montant?.let { " Le montant de ${it.enMGA()} ne sera plus compté dans les dépenses." } ?: ""),
+            labelConfirmer = "Oui, annuler",
+            onConfirm = { vm.annulerAchat(d.achat); dialogue = null },
+            onDismiss = { dialogue = null }
+        )
+
+        is DialogueStock.AnnulationBloquee -> AlertDialog(
+            onDismissRequest = { dialogue = null },
+            containerColor = SurfaceBlanche,
+            title = { Text("Annulation impossible", fontWeight = FontWeight.Bold) },
+            text = { Text(d.raison, color = TexteGris) },
             confirmButton = { DonakaButton("Compris", onClick = { dialogue = null }, style = StyleBouton.TEXTE) }
         )
     }

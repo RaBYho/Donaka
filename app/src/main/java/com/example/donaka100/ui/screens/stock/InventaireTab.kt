@@ -71,7 +71,7 @@ fun InventaireTab(
                 item {
                     DonakaSearchBar(
                         value = etat.recherche, onValueChange = onRecherche,
-                        placeholder = "Rechercher matière, rayon, fournisseur…"
+                        placeholder = "Rechercher…"
                     )
                 }
                 item {

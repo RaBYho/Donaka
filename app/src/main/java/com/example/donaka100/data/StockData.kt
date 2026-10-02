@@ -10,14 +10,19 @@ enum class TypeMouvementStock(val libelle: String) {
 data class MouvementStock(
     val id: String,
     val ingredientId: String,
-    val ingredientNom: String,              // gardé : l'ingrédient peut être supprimé plus tard
+    val ingredientNom: String,
     val dateHeure: LocalDateTime,
     val type: TypeMouvementStock,
-    val quantite: Double,                   // signée : + entrée, - sortie
+    val quantite: Double,
     val motif: String = "",
-    val montant: Long? = null,              // prix payé (achats)
-    val fournisseur: String = ""
+    val montant: Long? = null,
+    val fournisseur: String = "",
+    val estAchat: Boolean = false,           // vrai pour les entrées créées par « Effectuer un achat »
+    val mode: ModeReglement? = null,         // comment l'achat a été payé
+    val annule: Boolean = false,             // achat annulé : le stock a été retiré
+    val unite: UniteStock = UniteStock.KG
 )
+
 
 /** Création ET modification (en modification, la quantité saisie devient un ajustement) */
 data class NouvelIngredient(
@@ -31,8 +36,16 @@ data class NouvelIngredient(
 
 data class NouvelAchat(
     val nom: String,
-    val unite: UniteStock,                  // ignorée si l'ingrédient existe déjà
+    val unite: UniteStock,
     val quantite: Double,
     val montant: Long?,
-    val fournisseur: String
+    val fournisseur: String,
+    val mode: ModeReglement = ModeReglement.ESPECES
+)
+
+/** La quantité ne se corrige pas ici : c'est le rôle de « Ajuster » */
+data class ModificationAchat(
+    val montant: Long?,
+    val fournisseur: String,
+    val mode: ModeReglement
 )

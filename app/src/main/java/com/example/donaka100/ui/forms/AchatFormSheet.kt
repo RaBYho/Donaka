@@ -23,7 +23,7 @@ fun AchatFormSheet(
     var montant by remember { mutableStateOf("") }
     var fournisseur by remember { mutableStateOf(fournisseurInitial) }
     var tentative by remember { mutableStateOf(false) }
-
+    var mode by remember { mutableStateOf(ModeReglement.ESPECES) }
     val ing = if (nom.isBlank()) null else ingredients.firstOrNull { it.nom.cleNom() == nom.cleNom() }
     val uniteEff = ing?.unite ?: unite
     val q = quantite.enDecimal() ?: 0.0
@@ -86,8 +86,16 @@ fun AchatFormSheet(
         DonakaAmountField(
             value = montant, onValueChange = { montant = it },
             label = "Montant payé (facultatif)",
-            helper = "Conservé pour la page Dépenses."
+            helper = "Déduit de la trésorerie. Facultatif."
         )
+        if (montant.isNotBlank()) {
+            DonakaDropdownField(
+                label = "Mode de paiement",
+                options = ModeReglement.entries.map { it.libelle },
+                selected = mode.libelle,
+                onSelect = { choix -> mode = ModeReglement.entries.first { it.libelle == choix } }
+            )
+        }
         DonakaTextField(
             value = fournisseur, onValueChange = { fournisseur = it },
             label = "Fournisseur (facultatif)"

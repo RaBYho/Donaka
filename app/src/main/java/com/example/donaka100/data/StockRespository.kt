@@ -17,6 +17,8 @@ interface StockRepository {
     suspend fun ajuster(id: String, nouvelleQuantite: Double, motif: String)
     /** Retourne true si l'ingrédient a été créé par cet achat */
     suspend fun acheter(a: NouvelAchat): Boolean
+    suspend fun modifierAchat(mouvementId: String, m: ModificationAchat)
+    suspend fun annulerAchat(mouvementId: String)
 }
 
 class FakeStockRepository(avecDemo: Boolean = true) : StockRepository {
@@ -106,7 +108,34 @@ class FakeStockRepository(avecDemo: Boolean = true) : StockRepository {
                 fournisseur = fournisseur.ifBlank { it.fournisseur }
             )
         }
-        db.noter(id, ing.nom, TypeMouvementStock.ENTREE, a.quantite, "Achat", a.montant, fournisseur)
+        db.noter(
+            id, ing.nom, TypeMouvementStock.ENTREE, a.quantite, "Achat", a.montant, fournisseur,
+            estAchat = true, mode = a.mode
+        )
         return cree
+    }
+    override suspend fun modifierAchat(mouvementId: String, m: ModificationAchat) {
+        delay(300)
+        val mv = db.mouvements.first { it.id == mouvementId }
+        check(mv.estAchat && !mv.annule) { "Achat non modifiable" }
+        db.mouvements = db.mouvements.map {
+            if (it.id == mouvementId)
+                it.copy(montant = m.montant, fournisseur = m.fournisseur.nettoyerNom(), mode = m.mode)
+            else it
+        }
+    }
+
+    override suspend fun annulerAchat(mouvementId: String) {
+        delay(300)
+        val mv = db.mouvements.first { it.id == mouvementId }
+        check(mv.estAchat && !mv.annule) { "Achat déjà annulé" }
+        val ing = checkNotNull(db.ingredients.firstOrNull { it.id == mv.ingredientId }) { "Ingrédient supprimé" }
+        check(ing.quantite + 0.0005 >= mv.quantite) { "Stock insuffisant pour annuler" }
+
+        db.ingredients = db.ingredients.map {
+            if (it.id == ing.id) it.copy(quantite = (it.quantite - mv.quantite).coerceAtLeast(0.0)) else it
+        }
+        db.mouvements = db.mouvements.map { if (it.id == mouvementId) it.copy(annule = true) else it }
+        db.noter(ing.id, ing.nom, TypeMouvementStock.SORTIE, -mv.quantite, "Annulation d'achat")
     }
 }

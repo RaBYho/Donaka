@@ -6,7 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BakeryDining
-import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.ShoppingCartCheckout
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -22,7 +22,7 @@ import com.example.donaka100.ui.theme.*
 @Composable
 fun BoardQuickActions(onVente: () -> Unit, onSortie: () -> Unit, onFournee: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Tuile("+ Vente", Icons.Default.PointOfSale, onVente, Modifier.weight(1f))
+        Tuile("+ Client", Icons.Default.PersonAdd, onVente, Modifier.weight(1f))
         Tuile("+ Sortie", Icons.Default.ShoppingCartCheckout, onSortie, Modifier.weight(1f))
         Tuile("Fournée", Icons.Default.BakeryDining, onFournee, Modifier.weight(1f))
     }
