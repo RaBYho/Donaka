@@ -49,3 +49,18 @@ data class ModificationAchat(
     val fournisseur: String,
     val mode: ModeReglement
 )
+/** La fiche de contact. Le fournisseur lui-même vit dans les ingrédients et les achats. */
+data class FicheFournisseur(
+    val id: String,
+    val nom: String,
+    val telephone: String = "",     // chiffres seulement : "0345678901"
+    val adresse: String = "",
+    val delai: String = ""          // texte libre : "24h", "Matin même", "Retrait direct"
+)
+
+data class NouveauFournisseur(
+    val nom: String,
+    val telephone: String,
+    val adresse: String,
+    val delai: String
+)

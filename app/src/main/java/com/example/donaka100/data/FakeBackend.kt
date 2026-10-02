@@ -14,7 +14,8 @@ object FakeBackend {
     var fournees: List<Fournee> = emptyList()
     var compteur: Int = 0
     var mouvements: List<MouvementStock> = emptyList()
-
+    var fiches: List<FicheFournisseur> = emptyList()
+    var depenses: List<Depense> = emptyList()
     fun noter(
         ingredientId: String, nom: String, type: TypeMouvementStock, delta: Double,
         motif: String, montant: Long? = null, fournisseur: String = "",
@@ -149,6 +150,18 @@ object FakeBackend {
                 5.0, "Achat", null, "Grossiste Anosibe", estAchat = true, mode = ModeReglement.ESPECES),
             MouvementStock("m3", "i2", "Sucre Blanc", auj.atTime(7, 0), TypeMouvementStock.AJUSTEMENT,
                 -0.5, "Ajustement après comptage")
+        )
+        fiches = listOf(
+            FicheFournisseur("s1", "Grossiste Anosibe", "0345678901", "Marché Anosibe, Pavillon 12 • Tananarive", "24h"),
+            FicheFournisseur("s2", "Laiterie du Centre", "0321122233", "ZI Forello, Box 4 • Tanjombato", "Matin même"),
+            FicheFournisseur("s3", "Biospringer Madagascar", "0334567890", "Tanjombato", "48h"),
+            FicheFournisseur("s4", "Chocolaterie Robert", "0341234567", "Soanierana", "Retrait direct")
+        )
+        depenses = listOf(
+            Depense("d1", "Transport", 15_000, "Carburant moto de livraison", auj.atTime(11, 30), ModeReglement.ESPECES),
+            Depense("d2", "JIRAMA / Énergie", 80_000, "Facture électricité", hier.atTime(15, 0), ModeReglement.ESPECES),
+            Depense("d3", "Emballages", 30_000, "Sachets pour gâteaux (200)", auj.minusDays(3).atTime(9, 0), ModeReglement.ESPECES),
+            Depense("d4", "Salaires", 50_000, "Aide du week-end", auj.minusDays(5).atTime(17, 0), ModeReglement.MVOLA)
         )
     }
 }

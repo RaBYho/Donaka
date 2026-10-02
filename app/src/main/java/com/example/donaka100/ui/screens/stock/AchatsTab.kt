@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -13,7 +14,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,7 +71,7 @@ fun AchatsTab(
             etat.isLoading -> items(3) { DonakaCard(isLoading = true) {} }
 
             etat.achats.isEmpty() -> item {
-                Vide(Icons.Default.ReceiptLong, "Aucun achat", "Les achats enregistrés apparaîtront ici.")
+                Vide(Icons.AutoMirrored.Filled.ReceiptLong, "Aucun achat", "Les achats enregistrés apparaîtront ici.")
             }
 
             else -> {
@@ -159,8 +159,6 @@ private fun TitreJour(date: LocalDate, achats: List<MouvementStock>) {
         if (total > 0) Text("-${total.enMGA()}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Rouge)
     }
 }
-
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CarteAchat(m: MouvementStock, onModifier: () -> Unit, onAnnuler: () -> Unit) {
     val annule = m.annule
@@ -207,11 +205,11 @@ private fun CarteAchat(m: MouvementStock, onModifier: () -> Unit, onAnnuler: () 
         }
 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            FlowRow(
+            Row(
                 Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+                verticalAlignment = Alignment.CenterVertically
+            ){
                 if (annule) {
                     DonakaBadge("Annulé", type = TypeBadge.NEUTRE)
                     DonakaBadge("Stock retiré", type = TypeBadge.NEUTRE)

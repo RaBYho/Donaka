@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 enum class OngletStock(val libelle: String) {
-    INVENTAIRE("Inventaire"), HISTORIQUE("Historique"), FOURNISSEURS("Fournisseurs")
+    INVENTAIRE("Inventaire"), ACHAT("Achats"), FOURNISSEURS("Fournisseurs")
 }
 
 sealed interface FiltreStock {
@@ -26,7 +26,23 @@ sealed interface FiltreAchat {
     data object CeMois : FiltreAchat
     data class Rayon(val nom: String) : FiltreAchat
 }
-
+/** Un fournisseur est calculé : fiche (si elle existe) + ingrédients + achats qui portent son nom */
+data class Fournisseur(
+    val nom: String,
+    val fiche: FicheFournisseur?,
+    val ingredients: List<Ingredient>,
+    val achats: List<MouvementStock>          // achats non annulés
+) {
+    val telephone: String get() = fiche?.telephone.orEmpty()
+    val adresse: String get() = fiche?.adresse.orEmpty()
+    val delai: String get() = fiche?.delai.orEmpty()
+    val dernierAchat: MouvementStock? get() = achats.maxByOrNull { it.dateHeure }
+    val rayons: List<String>
+        get() = ingredients.map { it.rayon.trim() }.filter { it.isNotEmpty() }.distinct()
+    val rayonPrincipal: String?
+        get() = ingredients.map { it.rayon.trim() }.filter { it.isNotEmpty() }
+            .groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+}
 data class StockUiState(
     val isLoading: Boolean = true,
     val erreur: String? = null,
@@ -38,16 +54,52 @@ data class StockUiState(
     val filtre: FiltreStock = FiltreStock.Tout,
     val mouvements: List<MouvementStock> = emptyList(),
     val rechercheAchat: String = "",
-    val filtreAchat: FiltreAchat = FiltreAchat.Tous
+    val filtreAchat: FiltreAchat = FiltreAchat.Tous,
+    val fiches: List<FicheFournisseur> = emptyList(),
+    val rechercheFournisseur: String = "",
+    val rayonFournisseur: String? = null
 ) {
     val rayons: List<String>
         get() = ingredients.map { it.rayon.trim() }.filter { it.isNotEmpty() }
             .distinct().sortedBy { it.lowercase() }
 
-    val fournisseurs: List<String>
-        get() = ingredients.map { it.fournisseur.trim() }.filter { it.isNotEmpty() }
-            .distinct().sortedBy { it.lowercase() }
+    // ----- Fournisseurs -----
+    val listeFournisseurs: List<Fournisseur>
+        get() {
+            val noms = LinkedHashMap<String, String>()          // clé -> nom affiché
+            fiches.forEach { noms.putIfAbsent(it.nom.cleNom(), it.nom.nettoyerNom()) }
+            ingredients.filter { it.fournisseur.isNotBlank() }
+                .forEach { noms.putIfAbsent(it.fournisseur.cleNom(), it.fournisseur.nettoyerNom()) }
 
+            return noms.map { (cle, nom) ->
+                Fournisseur(
+                    nom = nom,
+                    fiche = fiches.firstOrNull { it.nom.cleNom() == cle },
+                    ingredients = ingredients.filter { it.fournisseur.cleNom() == cle },
+                    achats = mouvements.filter { it.estAchat && !it.annule && it.fournisseur.cleNom() == cle }
+                )
+            }.sortedBy { it.nom.lowercase() }
+        }
+
+    /** Utilisé par les formulaires (suggestions) : fiches, ingrédients et achats confondus */
+    val fournisseurs: List<String> get() = listeFournisseurs.map { it.nom }
+
+    val rayonsFournisseurs: List<String>
+        get() = listeFournisseurs.flatMap { it.rayons }.distinct().sortedBy { it.lowercase() }
+
+    val fournisseursAffiches: List<Fournisseur>
+        get() {
+            val q = rechercheFournisseur.trim().lowercase()
+            val chiffres = q.filter { it.isDigit() }
+            val rayon = rayonFournisseur?.takeIf { it in rayonsFournisseurs }
+            return listeFournisseurs.filter { f ->
+                (rayon == null || rayon in f.rayons) &&
+                        (q.isEmpty() ||
+                                f.nom.lowercase().contains(q) ||
+                                f.ingredients.any { it.nom.lowercase().contains(q) } ||
+                                (chiffres.isNotEmpty() && f.telephone.contains(chiffres)))
+            }
+        }
     val critiques: List<Ingredient> get() = ingredients.filter { it.statut == StatutStock.CRITIQUE }
     val aRenseigner: List<Ingredient> get() = ingredients.filter { it.statut == StatutStock.A_RENSEIGNER }
 
@@ -176,8 +228,12 @@ class StockViewModel(
         val produits = repository.getProduits()
         val fournees = repository.getFournees()
         val mouvements = repository.getMouvements()
+        val fiches = repository.getFiches()
         _etat.update {
-            it.copy(ingredients = ingredients, produits = produits, fournees = fournees, mouvements = mouvements)
+            it.copy(
+                ingredients = ingredients, produits = produits, fournees = fournees,
+                mouvements = mouvements, fiches = fiches
+            )
         }
     }
 
@@ -208,6 +264,22 @@ class StockViewModel(
         action("Achat annulé · ${m.quantite.avecUnite(m.unite)} retirés du stock") {
             repository.annulerAchat(m.id)
         }
+    fun onRechercheFournisseur(t: String) = _etat.update { it.copy(rechercheFournisseur = t) }
+    fun onRayonFournisseur(r: String?) = _etat.update { it.copy(rayonFournisseur = r) }
+
+    fun creerFournisseur(f: NouveauFournisseur) =
+        action("« ${f.nom.nettoyerNom()} » ajouté aux fournisseurs") { repository.creerFournisseur(f) }
+
+    fun modifierFournisseur(ancienNom: String, f: NouveauFournisseur) =
+        action("Fiche mise à jour") { repository.modifierFournisseur(ancienNom, f) }
+
+    fun supprimerFournisseur(nom: String) =
+        action("« $nom » supprimé") { repository.supprimerFournisseur(nom) }
+
+    /** Ouvre l'onglet Achats, déjà filtré sur ce fournisseur */
+    fun voirAchats(nom: String) = _etat.update {
+        it.copy(onglet = OngletStock.ACHAT, rechercheAchat = nom, filtreAchat = FiltreAchat.Tous)
+    }
     fun creerIngredient(i: NouvelIngredient) =
         action("« ${i.nom.nettoyerNom()} » ajouté au stock") { repository.creerIngredient(i) }
 

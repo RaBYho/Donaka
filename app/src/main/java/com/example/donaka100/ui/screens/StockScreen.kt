@@ -3,7 +3,6 @@ package com.example.donaka100.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +24,13 @@ import com.example.donaka100.ui.theme.*
 import com.example.donaka100.data.MouvementStock
 import com.example.donaka100.ui.forms.ModifierAchatSheet
 import com.example.donaka100.ui.screens.stock.AchatsTab
+import androidx.compose.ui.platform.LocalContext
+import com.example.donaka100.data.cleNom
+import com.example.donaka100.ui.Fournisseur
+import com.example.donaka100.ui.forms.FournisseurFormSheet
+import com.example.donaka100.ui.screens.stock.FournisseursTab
+import com.example.donaka100.ui.util.ouvrirAppel
+import com.example.donaka100.data.StatutStock
 private sealed interface DialogueStock {
     data object Nouveau : DialogueStock
     data class Edition(val ingredient: Ingredient) : DialogueStock
@@ -35,6 +41,9 @@ private sealed interface DialogueStock {
     data class ModifierAchat(val achat: MouvementStock) : DialogueStock
     data class AnnulerAchat(val achat: MouvementStock) : DialogueStock
     data class AnnulationBloquee(val raison: String) : DialogueStock
+    data object CreerFournisseur : DialogueStock
+    data class EditerFournisseur(val fournisseur: Fournisseur) : DialogueStock
+    data class SupprimerFiche(val fournisseur: Fournisseur) : DialogueStock
 }
 
 @Composable
@@ -42,6 +51,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
     val etat by vm.etat.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialogue by remember { mutableStateOf<DialogueStock?>(null) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
 
@@ -56,8 +66,8 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
                     Text(
                         when (etat.onglet) {
                             OngletStock.INVENTAIRE -> "Matières premières"
-                            OngletStock.HISTORIQUE -> "Historique"
-                            OngletStock.FOURNISSEURS -> "Fournisseurs"
+                            OngletStock.ACHAT -> "Historique"
+                            OngletStock.FOURNISSEURS -> "Fournisseurs & approvisionnement"
                         },
                         fontSize = 12.sp, color = TexteGris
                     )
@@ -93,7 +103,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
                             else DialogueStock.Bloque(ing, utilises.map { it.nom })
                     }
                 )
-                etat.onglet == OngletStock.HISTORIQUE -> AchatsTab(
+                etat.onglet == OngletStock.ACHAT -> AchatsTab(
                     etat = etat, modifier = Modifier.weight(1f),
                     onAchat = { dialogue = DialogueStock.Acheter() },
                     onRecherche = vm::onRechercheAchat,
@@ -104,10 +114,20 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
                         dialogue = if (raison == null) DialogueStock.AnnulerAchat(m) else DialogueStock.AnnulationBloquee(raison)
                     }
                 )
-                else -> DonakaEmptyState(
-                    titre = "Bientôt disponible",
-                    message = "L'onglet « ${etat.onglet.libelle} » arrive dans une prochaine étape.",
-                    icone = Icons.Default.Schedule
+                else -> FournisseursTab(
+                    etat = etat, modifier = Modifier.weight(1f),
+                    onNouveau = { dialogue = DialogueStock.CreerFournisseur },
+                    onRecherche = vm::onRechercheFournisseur,
+                    onRayon = vm::onRayonFournisseur,
+                    onAppeler = { context.ouvrirAppel(it.telephone) },
+                    onCommander = { f ->
+                        val prefill = f.ingredients.firstOrNull { it.statut == StatutStock.CRITIQUE }?.nom
+                            ?: f.ingredients.singleOrNull()?.nom.orEmpty()
+                        dialogue = DialogueStock.Acheter(prefill, f.nom)
+                    },
+                    onModifier = { dialogue = DialogueStock.EditerFournisseur(it) },
+                    onVoirAchats = { vm.voirAchats(it.nom) },
+                    onSupprimerFiche = { dialogue = DialogueStock.SupprimerFiche(it) }
                 )
             }
         }
@@ -187,6 +207,30 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
             title = { Text("Annulation impossible", fontWeight = FontWeight.Bold) },
             text = { Text(d.raison, color = TexteGris) },
             confirmButton = { DonakaButton("Compris", onClick = { dialogue = null }, style = StyleBouton.TEXTE) }
+        )
+        DialogueStock.CreerFournisseur -> FournisseurFormSheet(
+            autresNoms = etat.fiches.map { it.nom },
+            onDismiss = { dialogue = null },
+            onSave = { vm.creerFournisseur(it); dialogue = null }
+        )
+
+        is DialogueStock.EditerFournisseur -> FournisseurFormSheet(
+            initial = d.fournisseur,
+            autresNoms = etat.listeFournisseurs
+                .filter { it.nom.cleNom() != d.fournisseur.nom.cleNom() }.map { it.nom },
+            onDismiss = { dialogue = null },
+            onSave = { vm.modifierFournisseur(d.fournisseur.nom, it); dialogue = null }
+        )
+
+        is DialogueStock.SupprimerFiche -> DonakaConfirmDialog(
+            titre = "Supprimer ce fournisseur ?",
+            message = "« ${d.fournisseur.nom} » sera retiré de la liste." +
+                    (if (d.fournisseur.ingredients.isNotEmpty())
+                        " Ses ${d.fournisseur.ingredients.size} ingrédient(s) n'auront plus de fournisseur."
+                    else "") +
+                    " Les achats passés gardent son nom dans l'historique.",
+            onConfirm = { vm.supprimerFournisseur(d.fournisseur.nom); dialogue = null },
+            onDismiss = { dialogue = null }
         )
     }
 }

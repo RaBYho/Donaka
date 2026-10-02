@@ -7,10 +7,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.example.donaka100.ui.navigation.Destination
-import com.example.donaka100.ui.screens.PagePlaceholder
 import com.example.donaka100.ui.theme.Fond
 import com.example.donaka100.ui.screens.CommandeScreen
 import com.example.donaka100.ui.screens.BoardScreen
+import com.example.donaka100.ui.screens.DepensesScreen
 import com.example.donaka100.ui.screens.FourneauxScreen
 import com.example.donaka100.ui.screens.StockScreen
 
@@ -30,7 +30,7 @@ fun DonakaApp() {
                 Destination.COMMANDE -> CommandeScreen()
                 Destination.FOURNEAUX -> FourneauxScreen()
                 Destination.STOCK -> StockScreen()
-                Destination.DEPENSES -> PagePlaceholder("Dépenses")
+                Destination.DEPENSES -> DepensesScreen(onVoirStock = { courant = Destination.STOCK })
             }
         }
     }

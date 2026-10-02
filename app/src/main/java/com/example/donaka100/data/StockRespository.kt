@@ -19,6 +19,11 @@ interface StockRepository {
     suspend fun acheter(a: NouvelAchat): Boolean
     suspend fun modifierAchat(mouvementId: String, m: ModificationAchat)
     suspend fun annulerAchat(mouvementId: String)
+    suspend fun getFiches(): List<FicheFournisseur>
+    suspend fun creerFournisseur(f: NouveauFournisseur)
+    /** Crée la fiche si le fournisseur n'en avait pas. Un changement de nom est propagé partout. */
+    suspend fun modifierFournisseur(ancienNom: String, f: NouveauFournisseur)
+    suspend fun supprimerFournisseur(nom: String)
 }
 
 class FakeStockRepository(avecDemo: Boolean = true) : StockRepository {
@@ -115,7 +120,7 @@ class FakeStockRepository(avecDemo: Boolean = true) : StockRepository {
         return cree
     }
     override suspend fun modifierAchat(mouvementId: String, m: ModificationAchat) {
-        delay(300)
+        delay(300.milliseconds)
         val mv = db.mouvements.first { it.id == mouvementId }
         check(mv.estAchat && !mv.annule) { "Achat non modifiable" }
         db.mouvements = db.mouvements.map {
@@ -126,7 +131,7 @@ class FakeStockRepository(avecDemo: Boolean = true) : StockRepository {
     }
 
     override suspend fun annulerAchat(mouvementId: String) {
-        delay(300)
+        delay(300.milliseconds)
         val mv = db.mouvements.first { it.id == mouvementId }
         check(mv.estAchat && !mv.annule) { "Achat déjà annulé" }
         val ing = checkNotNull(db.ingredients.firstOrNull { it.id == mv.ingredientId }) { "Ingrédient supprimé" }
@@ -137,5 +142,54 @@ class FakeStockRepository(avecDemo: Boolean = true) : StockRepository {
         }
         db.mouvements = db.mouvements.map { if (it.id == mouvementId) it.copy(annule = true) else it }
         db.noter(ing.id, ing.nom, TypeMouvementStock.SORTIE, -mv.quantite, "Annulation d'achat")
+    }
+    override suspend fun getFiches() = db.fiches
+
+    override suspend fun creerFournisseur(f: NouveauFournisseur) {
+        delay(300.milliseconds)
+        require(db.fiches.none { it.nom.cleNom() == f.nom.cleNom() }) { "Fiche déjà existante" }
+        db.fiches += FicheFournisseur(
+                    UUID.randomUUID().toString(), f.nom.nettoyerNom(), f.telephone,
+                    f.adresse.nettoyerNom(), f.delai.nettoyerNom()
+                )
+    }
+
+    override suspend fun modifierFournisseur(ancienNom: String, f: NouveauFournisseur) {
+        delay(300.milliseconds)
+        val ancienneCle = ancienNom.cleNom()
+        val nouveauNom = f.nom.nettoyerNom()
+        val nouvelleCle = nouveauNom.cleNom()
+        require(nouvelleCle == ancienneCle || db.fiches.none { it.nom.cleNom() == nouvelleCle }) { "Nom déjà pris" }
+
+        val existante = db.fiches.firstOrNull { it.nom.cleNom() == ancienneCle }
+        db.fiches =
+            if (existante != null) db.fiches.map {
+                if (it.id == existante.id)
+                    it.copy(nom = nouveauNom, telephone = f.telephone,
+                        adresse = f.adresse.nettoyerNom(), delai = f.delai.nettoyerNom())
+                else it
+            }
+            else db.fiches + FicheFournisseur(
+                UUID.randomUUID().toString(), nouveauNom, f.telephone,
+                f.adresse.nettoyerNom(), f.delai.nettoyerNom()
+            )
+
+        // Le nouveau nom suit partout : ingrédients et achats passés
+        db.ingredients = db.ingredients.map {
+            if (it.fournisseur.cleNom() == ancienneCle) it.copy(fournisseur = nouveauNom) else it
+        }
+        db.mouvements = db.mouvements.map {
+            if (it.fournisseur.cleNom() == ancienneCle) it.copy(fournisseur = nouveauNom) else it
+        }
+    }
+
+    override suspend fun supprimerFournisseur(nom: String) {
+        delay(300.milliseconds)
+        val cle = nom.cleNom()
+        db.fiches = db.fiches.filterNot { it.nom.cleNom() == cle }
+        db.ingredients = db.ingredients.map {
+            if (it.fournisseur.cleNom() == cle) it.copy(fournisseur = "") else it
+        }
+        // Les mouvements d'achat gardent le nom : c'est l'historique
     }
 }
