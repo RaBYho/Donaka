@@ -4,9 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.donaka100.data.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.DayOfWeek
 import java.time.YearMonth
@@ -18,19 +22,20 @@ enum class OngletFourneaux(val libelle: String) {
     A_PREPARER("À Préparer"), RECETTES("Recettes"), HISTORIQUE("Historique")
 }
 
-/** Une ligne du plan : total d'un produit sur toutes les commandes de demain */
 data class LignePlan(
     val produitId: String,
     val nom: String,
     val quantite: Int,
     val produit: Produit?
 )
+
 enum class TriProduit(val libelle: String) {
     NOM("Nom (A → Z)"),
     PRIX_CROISSANT("Prix de gros croissant"),
     PRIX_DECROISSANT("Prix de gros décroissant"),
     CATEGORIE("Catégorie")
 }
+
 enum class PeriodeFournee(val libelle: String) {
     TOUT("Tout"),
     CE_MOIS("Ce Mois"),
@@ -59,14 +64,14 @@ data class SyntheseMois(
 private val fmtLong = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", Locale.FRENCH)
 private val fmtCourt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
-/** Tout ce qu'on peut chercher dans une fournée : produits, ingrédients, date */
 private fun Fournee.texteRecherche(): String =
     (lignes.map { it.nom } + consommations.map { it.nom } + date.format(fmtLong) + date.format(fmtCourt))
         .joinToString(" ").lowercase()
+
 data class FourneauxUiState(
     val isLoading: Boolean = true,
     val erreur: String? = null,
-    val produits: List<Produit> = emptyList(),      // archivés inclus (pour le calcul du plan)
+    val produits: List<Produit> = emptyList(),
     val ingredients: List<Ingredient> = emptyList(),
     val commandes: List<Commande> = emptyList(),
     val fournees: List<Fournee> = emptyList(),
@@ -76,7 +81,6 @@ data class FourneauxUiState(
     val tri: TriProduit = TriProduit.NOM,
     val rechercheFournee: String = "",
     val periode: PeriodeFournee = PeriodeFournee.TOUT
-
 ) {
     val demain: LocalDate get() = LocalDate.now().plusDays(1)
 
@@ -109,6 +113,7 @@ data class FourneauxUiState(
                 )
             }
         }
+
     val plan: List<LignePlan>
         get() = commandes
             .filter { it.date == demain }
@@ -122,7 +127,6 @@ data class FourneauxUiState(
     val produitsSansRecette: List<LignePlan>
         get() = plan.filter { it.produit == null || !it.produit.aRecette }
 
-    /** Ingrédients nécessaires pour fabriquer ces quantités (proportionnel, sans arrondi au lot) */
     fun besoinsPour(quantites: Map<String, Int>): List<Besoin> {
         val requis = mutableMapOf<String, Double>()
         produits.forEach { p ->
@@ -141,7 +145,6 @@ data class FourneauxUiState(
 
     val besoinsPlan: List<Besoin> get() = besoinsPour(plan.associate { it.produitId to it.quantite })
 
-    /** Une fournée annulée ne compte plus : on peut relancer la production */
     val fourneeDemain: Fournee? get() = fournees.firstOrNull { it.date == demain && !it.annulee }
 
     val historiqueAffiche: List<Fournee>
@@ -154,7 +157,6 @@ data class FourneauxUiState(
                 .sortedByDescending { it.heure }
         }
 
-    /** Toujours calculée sur le mois en cours, quel que soit le filtre */
     val syntheseMois: SyntheseMois
         get() {
             val auj = LocalDate.now()
@@ -181,9 +183,12 @@ data class FourneauxUiState(
         }
 }
 
+/**
+ * ViewModel réactif pour la gestion des fourneaux et recettes.
+ * Traitement en arrière-plan (Dispatchers.IO) pour une fluidité sans accroc.
+ */
 class FourneauxViewModel(
-    // Demain : ApiFourneauxRepository(...) ici. Mets avecDemo = true pour tester avec des données.
-    private val repository: FourneauxRepository = FakeFourneauxRepository()
+    private val repository: FourneauxRepository = RoomFourneauxRepository()
 ) : ViewModel() {
 
     private val _etat = MutableStateFlow(FourneauxUiState())
@@ -194,13 +199,21 @@ class FourneauxViewModel(
 
     init { charger() }
 
-    private suspend fun rafraichir() {
-        val produits = repository.getProduits()
-        val ingredients = repository.getIngredients()
-        val commandes = repository.getCommandes()
-        val fournees = repository.getFournees()
-        _etat.update {
-            it.copy(produits = produits, ingredients = ingredients, commandes = commandes, fournees = fournees)
+    private suspend fun rafraichir() = withContext(Dispatchers.IO) {
+        coroutineScope {
+            val produitsDef = async { repository.getProduits() }
+            val ingredientsDef = async { repository.getIngredients() }
+            val commandesDef = async { repository.getCommandes() }
+            val fourneesDef = async { repository.getFournees() }
+
+            val produits = produitsDef.await()
+            val ingredients = ingredientsDef.await()
+            val commandes = commandesDef.await()
+            val fournees = fourneesDef.await()
+
+            _etat.update {
+                it.copy(produits = produits, ingredients = ingredients, commandes = commandes, fournees = fournees)
+            }
         }
     }
 
@@ -224,16 +237,20 @@ class FourneauxViewModel(
     fun onTri(t: TriProduit) = _etat.update { it.copy(tri = t) }
     fun onRechercheFournee(t: String) = _etat.update { it.copy(rechercheFournee = t) }
     fun onPeriode(p: PeriodeFournee) = _etat.update { it.copy(periode = p) }
+
     private fun messageIngredients(nb: Int) =
         if (nb == 0) "" else " · $nb ingrédient${if (nb > 1) "s" else ""} ajouté${if (nb > 1) "s" else ""} au stock"
+
     fun creerProduit(p: NouveauProduit) = actionMsg {
         val nb = repository.creerProduit(p)
         "Produit « ${p.nom} » créé" + messageIngredients(nb)
     }
+
     fun modifierProduit(id: String, p: NouveauProduit) = actionMsg {
         val nb = repository.modifierProduit(id, p)
         "Produit mis à jour" + messageIngredients(nb)
     }
+
     fun supprimerProduit(p: Produit) = actionMsg {
         val archive = repository.supprimerProduit(p.id)
         if (archive) "« ${p.nom} » archivé (déjà commandé)" else "« ${p.nom} » supprimé"
@@ -256,7 +273,7 @@ class FourneauxViewModel(
     private fun actionMsg(bloc: suspend () -> String) {
         viewModelScope.launch {
             try {
-                val message = bloc()
+                val message = withContext(Dispatchers.IO) { bloc() }
                 rafraichir()
                 _messages.send(message)
             } catch (e: CancellationException) {
@@ -264,6 +281,17 @@ class FourneauxViewModel(
             } catch (e: Exception) {
                 _messages.send("Échec de l'opération. Réessaie.")
             }
+        }
+    }
+
+    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton */
+    fun actualiser() {
+        viewModelScope.launch {
+            try {
+                rafraichir()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) { }
         }
     }
 }

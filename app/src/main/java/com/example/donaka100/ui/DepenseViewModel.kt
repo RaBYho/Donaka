@@ -6,9 +6,13 @@ import com.example.donaka100.data.*
 import com.example.donaka100.ui.components.avecUnite
 import com.example.donaka100.ui.components.enMGA
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -51,7 +55,6 @@ data class DepenseUiState(
                     dateHeure = d.dateHeure, mode = d.mode, depense = d
                 )
             }
-            // Achats annulés ou sans montant : pas de dépense
             val deStock = achats.filter { !it.annule && (it.montant ?: 0L) > 0L }.map { m ->
                 LigneDepense(
                     id = "a-${m.id}", achat = true,
@@ -63,7 +66,6 @@ data class DepenseUiState(
             return libres + deStock
         }
 
-    /** Catégories saisies par le chef (sans « Achats de stock ») : suggestions du formulaire */
     val categories: List<String>
         get() = depenses.map { it.categorie.trim() }.filter { it.isNotEmpty() }
             .distinctBy { it.lowercase() }.sortedBy { it.lowercase() }
@@ -76,7 +78,6 @@ data class DepenseUiState(
 
     val totalMois: Long get() = lignesMois.sumOf { it.montant }
 
-    /** Catégorie -> total du mois, de la plus grosse à la plus petite */
     val repartition: List<Pair<String, Long>>
         get() = lignesMois.groupBy { it.categorie }
             .map { (c, l) -> c to l.sumOf { it.montant } }
@@ -113,9 +114,12 @@ data class DepenseUiState(
         }
 }
 
+/**
+ * ViewModel réactif pour la gestion des dépenses.
+ * Traitement asynchrone sur Dispatchers.IO pour une réactivité instantanée.
+ */
 class DepenseViewModel(
-    // Demain : ApiDepenseRepository(...) ici. Mets avecDemo = true pour tester avec des données.
-    private val repository: DepenseRepository = FakeDepenseRepository()
+    private val repository: DepenseRepository = RoomDepenseRepository()
 ) : ViewModel() {
 
     private val _etat = MutableStateFlow(DepenseUiState())
@@ -126,10 +130,14 @@ class DepenseViewModel(
 
     init { charger() }
 
-    private suspend fun rafraichir() {
-        val depenses = repository.getDepenses()
-        val achats = repository.getAchats()
-        _etat.update { it.copy(depenses = depenses, achats = achats) }
+    private suspend fun rafraichir() = withContext(Dispatchers.IO) {
+        coroutineScope {
+            val depensesDef = async { repository.getDepenses() }
+            val achatsDef = async { repository.getAchats() }
+            val depenses = depensesDef.await()
+            val achats = achatsDef.await()
+            _etat.update { it.copy(depenses = depenses, achats = achats) }
+        }
     }
 
     fun charger() {
@@ -161,7 +169,7 @@ class DepenseViewModel(
     private fun action(succes: String, bloc: suspend () -> Unit) {
         viewModelScope.launch {
             try {
-                bloc()
+                withContext(Dispatchers.IO) { bloc() }
                 rafraichir()
                 _messages.send(succes)
             } catch (e: CancellationException) {
@@ -169,6 +177,17 @@ class DepenseViewModel(
             } catch (_: Exception) {
                 _messages.send("Échec de l'opération. Réessaie.")
             }
+        }
+    }
+
+    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton */
+    fun actualiser() {
+        viewModelScope.launch {
+            try {
+                rafraichir()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) { }
         }
     }
 }

@@ -86,7 +86,7 @@ fun HistoriqueTab(etat: CommandeUiState, modifier: Modifier = Modifier) {
 private fun HistoriqueBanner(total: Long, isLoading: Boolean) {
     DonakaCard(isLoading = isLoading) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).clip(CircleShape).background(Vert))
+            Box(Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary))
             Spacer(Modifier.width(8.dp))
             Text("TOTAL ENCAISSÉ CE JOUR", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Vert)
         }
@@ -131,7 +131,7 @@ private fun EncaissementCard(e: Encaissement, onClick: () -> Unit) {
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "${e.dateHeure.format(formatHeure)} • ${e.mode?.libelle ?: "À crédit"}",
+                    "${e.dateHeure.format(formatHeure)}   ${e.mode?.libelle ?: "À crédit"}",
                     fontSize = 12.sp, color = TexteGris
                 )
             }
@@ -167,7 +167,7 @@ private fun PiedJournal() {
     ) {
         Icon(Icons.Default.Verified, null, tint = Primary, modifier = Modifier.size(24.dp))
         Spacer(Modifier.height(6.dp))
-        Text("Journal à jour • Donaka Caisse", fontWeight = FontWeight.SemiBold, color = TexteFonce)
+        Text("Journal à jour", fontWeight = FontWeight.SemiBold, color = TexteFonce)
         Text(
             "Toutes les transactions précédentes sont archivées dans la comptabilité générale.",
             fontSize = 12.sp, color = TexteGris, textAlign = TextAlign.Center

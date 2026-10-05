@@ -1,5 +1,11 @@
 package com.example.donaka100.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
@@ -30,6 +36,9 @@ private sealed interface DialogueFourneaux {
     data class AnnulerFournee(val fournee: Fournee) : DialogueFourneaux
 }
 
+/**
+ * Écran Fourneaux avec transitions douces entre onglets et calculs légers.
+ */
 @Composable
 fun FourneauxScreen(vm: FourneauxViewModel = viewModel()) {
     val etat by vm.etat.collectAsStateWithLifecycle()
@@ -37,6 +46,8 @@ fun FourneauxScreen(vm: FourneauxViewModel = viewModel()) {
     var dialogue by remember { mutableStateOf<DialogueFourneaux?>(null) }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(Unit) { vm.onOnglet(OngletFourneaux.A_PREPARER) }
+    LaunchedEffect(Unit) { vm.actualiser() }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -70,36 +81,46 @@ fun FourneauxScreen(vm: FourneauxViewModel = viewModel()) {
                 )
             }
 
-            when {
-                etat.erreur != null -> DonakaEmptyState(
-                    titre = "Connexion impossible", message = etat.erreur!!,
-                    icone = Icons.Default.CloudOff,
-                    labelAction = "Réessayer", onAction = vm::charger
-                )
+            AnimatedContent(
+                targetState = etat.onglet,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing)) togetherWith
+                            fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing))
+                },
+                modifier = Modifier.weight(1f),
+                label = "fourneauxTabTransition"
+            ) { onglet ->
+                when {
+                    etat.erreur != null -> DonakaEmptyState(
+                        titre = "Connexion impossible", message = etat.erreur!!,
+                        icone = Icons.Default.CloudOff,
+                        labelAction = "Réessayer", onAction = vm::charger
+                    )
 
-                etat.onglet == OngletFourneaux.A_PREPARER -> PreparerTab(
-                    etat = etat, modifier = Modifier.weight(1f),
-                    onLancer = { dialogue = DialogueFourneaux.Lancer },
-                    onAnnuler = { dialogue = DialogueFourneaux.AnnulerFournee(it) },
-                    onVoirRecettes = { vm.onOnglet(OngletFourneaux.RECETTES) }
-                )
+                    onglet == OngletFourneaux.A_PREPARER -> PreparerTab(
+                        etat = etat, modifier = Modifier.fillMaxSize(),
+                        onLancer = { dialogue = DialogueFourneaux.Lancer },
+                        onAnnuler = { dialogue = DialogueFourneaux.AnnulerFournee(it) },
+                        onVoirRecettes = { vm.onOnglet(OngletFourneaux.RECETTES) }
+                    )
 
-                etat.onglet == OngletFourneaux.RECETTES -> RecettesTab(
-                    etat = etat, modifier = Modifier.weight(1f),
-                    onNouveau = { dialogue = DialogueFourneaux.CreerProduit },
-                    onModifier = { dialogue = DialogueFourneaux.EditerProduit(it) },
-                    onSupprimer = { dialogue = DialogueFourneaux.SupprimerProduit(it) },
-                    onRecherche = vm::onRechercheProduit,
-                    onCategorie = vm::onCategorie,
-                    onTri = vm::onTri
-                )
+                    onglet == OngletFourneaux.RECETTES -> RecettesTab(
+                        etat = etat, modifier = Modifier.fillMaxSize(),
+                        onNouveau = { dialogue = DialogueFourneaux.CreerProduit },
+                        onModifier = { dialogue = DialogueFourneaux.EditerProduit(it) },
+                        onSupprimer = { dialogue = DialogueFourneaux.SupprimerProduit(it) },
+                        onRecherche = vm::onRechercheProduit,
+                        onCategorie = vm::onCategorie,
+                        onTri = vm::onTri
+                    )
 
-                else -> FourneesTab(
-                    etat = etat, modifier = Modifier.weight(1f),
-                    onAnnuler = { dialogue = DialogueFourneaux.AnnulerFournee(it) },
-                    onRecherche = vm::onRechercheFournee,
-                    onPeriode = vm::onPeriode
-                )
+                    else -> FourneesTab(
+                        etat = etat, modifier = Modifier.fillMaxSize(),
+                        onAnnuler = { dialogue = DialogueFourneaux.AnnulerFournee(it) },
+                        onRecherche = vm::onRechercheFournee,
+                        onPeriode = vm::onPeriode
+                    )
+                }
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))

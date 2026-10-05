@@ -36,7 +36,7 @@ fun RecettesTab(
     onCategorie: (String?) -> Unit,
     onTri: (TriProduit) -> Unit
 ) {
-    val liste = etat.produitsAffiches
+    val liste = remember(etat.produits, etat.rechercheProduit, etat.categorieFiltre, etat.tri) { etat.produitsAffiches }
     val filtreActif = etat.rechercheProduit.isNotBlank() || etat.categorieFiltre != null
 
     LazyColumn(
@@ -61,7 +61,7 @@ fun RecettesTab(
         item {
             DonakaSearchBar(
                 value = etat.rechercheProduit, onValueChange = onRecherche,
-                placeholder = "Rechercher un produit, formule…"
+                placeholder = "Rechercher…"
             )
         }
         if (etat.categories.isNotEmpty()) {

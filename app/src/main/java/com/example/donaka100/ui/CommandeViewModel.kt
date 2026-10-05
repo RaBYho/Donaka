@@ -5,14 +5,18 @@ import androidx.lifecycle.viewModelScope
 import com.example.donaka100.data.*
 import com.example.donaka100.ui.components.enMGA
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 
 enum class OngletCommande(val libelle: String) {
-    DU_JOUR("Commandes"), CREANCES("Clients & Créances"), HISTORIQUE("Historique")
+    DU_JOUR("Commandes"), CREANCES("Clients"), HISTORIQUE("Historique")
 }
 
 enum class FiltreHistorique(val libelle: String) {
@@ -65,8 +69,6 @@ data class CommandeUiState(
     fun client(id: String?): Client? = clients.firstOrNull { it.id == id }
 
     // ----- Livraisons -----
-
-    /** À livrer : aujourd'hui + les retards, triées par date puis heure souhaitée puis nom */
     val aLivrer: List<Commande>
         get() {
             val auj = LocalDate.now()
@@ -88,12 +90,9 @@ data class CommandeUiState(
     fun commandeDemainDe(clientId: String): Commande? =
         commandesDemain.firstOrNull { it.clientId == clientId }
 
-    /** CA du jour : valeur de tout ce qui est livré, payé ou non */
     val valeurLivreeAujourdhui: Long get() = livrees.sumOf { it.total }
 
     // ----- Historique -----
-
-    /** Argent réellement reçu aujourd'hui (les lignes « à crédit » ne comptent pas) */
     val totalEncaisseAujourdhui: Long
         get() {
             val auj = LocalDate.now()
@@ -118,9 +117,12 @@ data class CommandeUiState(
         }
 }
 
+/**
+ * ViewModel réactif pour la gestion des commandes et encaissements.
+ * Exécute les requêtes sur Dispatchers.IO pour éliminer toute saccade lors de la mise à jour de l'UI.
+ */
 class CommandeViewModel(
-    // Demain : ApiCommandeRepository(...) ici. Mets avecDemo = true pour tester avec le maquette.
-    private val repository: CommandeRepository = FakeCommandeRepository()
+    private val repository: CommandeRepository = RoomCommandeRepository()
 ) : ViewModel() {
 
     private val _etat = MutableStateFlow(CommandeUiState())
@@ -131,13 +133,21 @@ class CommandeViewModel(
 
     init { charger() }
 
-    private suspend fun rafraichir() {
-        val clients = repository.getClients()
-        val encaissements = repository.getEncaissements()
-        val commandes = repository.getCommandes()
-        val produits = repository.getProduits()
-        _etat.update {
-            it.copy(clients = clients, encaissements = encaissements, commandes = commandes, produits = produits)
+    private suspend fun rafraichir() = withContext(Dispatchers.IO) {
+        coroutineScope {
+            val clientsDef = async { repository.getClients() }
+            val encaissementsDef = async { repository.getEncaissements() }
+            val commandesDef = async { repository.getCommandes() }
+            val produitsDef = async { repository.getProduits() }
+
+            val clients = clientsDef.await()
+            val encaissements = encaissementsDef.await()
+            val commandes = commandesDef.await()
+            val produits = produitsDef.await()
+
+            _etat.update {
+                it.copy(clients = clients, encaissements = encaissements, commandes = commandes, produits = produits)
+            }
         }
     }
 
@@ -205,11 +215,11 @@ class CommandeViewModel(
     fun rattacherClient(c: Commande, client: NouveauClient) =
         action("${client.nom} ajouté comme client") { repository.rattacherClient(c.id, client) }
 
-    /** Modèle commun : exécute, recharge tout, prévient l'utilisateur */
+    /** Modèle d'action optimisé : exécute en IO, rafraîchit réactivement, notifie */
     private fun action(succes: String, bloc: suspend () -> Unit) {
         viewModelScope.launch {
             try {
-                bloc()
+                withContext(Dispatchers.IO) { bloc() }
                 rafraichir()
                 _messages.send(succes)
             } catch (e: CancellationException) {
@@ -217,6 +227,17 @@ class CommandeViewModel(
             } catch (e: Exception) {
                 _messages.send("Échec de l'opération. Réessaie.")
             }
+        }
+    }
+
+    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton */
+    fun actualiser() {
+        viewModelScope.launch {
+            try {
+                rafraichir()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) { }
         }
     }
 }

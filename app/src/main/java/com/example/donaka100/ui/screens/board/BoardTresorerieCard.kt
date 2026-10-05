@@ -22,25 +22,33 @@ fun BoardTresorerieCard(data: BoardData, isLoading: Boolean) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("TRÉSORERIE NETTE", fontSize = 11.sp, color = TexteGris, fontWeight = FontWeight.SemiBold)
-            val v = data.variationVeille
-            DonakaBadge(
-                texte = "${if (v > 0) "+" else ""}$v% vs hier",
-                type = when {
-                    v > 0 -> TypeBadge.SUCCES
-                    v < 0 -> TypeBadge.ERREUR
-                    else -> TypeBadge.NEUTRE
-                }
-            )
+            data.variationVeille?.let { v ->
+                DonakaBadge(
+                    texte = "${if (v > 0) "+" else ""}$v% vs hier",
+                    type = when {
+                        v > 0 -> TypeBadge.SUCCES
+                        v < 0 -> TypeBadge.ERREUR
+                        else -> TypeBadge.NEUTRE
+                    }
+                )
+            }
         }
-        Text(data.tresorerie.enMGA(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TexteFonce)
+        Text(
+            data.tresorerie.enMGA(), fontSize = 28.sp, fontWeight = FontWeight.Bold,
+            color = if (data.tresorerie < 0) Rouge else TexteFonce
+        )
         HorizontalDivider(color = SurfaceMoyenne)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Stat("CA Jour", data.chiffreAffaires, Vert, Modifier.weight(1f))
+            Stat("Encaissé", data.encaisse, Vert, Modifier.weight(1f))
             Stat("Achats & Frais", data.achatsEtFrais, Rouge, Modifier.weight(1f))
         }
+        Text(
+            "CA du jour : ${data.chiffreAffaires.enMGA()}" +
+                    if (data.creditDuJour > 0) " · dont ${data.creditDuJour.enMGA()} à crédit" else "",
+            fontSize = 12.sp, color = TexteGris
+        )
     }
 }
-
 @Composable
 private fun Stat(titre: String, valeur: Long, couleur: androidx.compose.ui.graphics.Color, modifier: Modifier) {
     Column(modifier) {

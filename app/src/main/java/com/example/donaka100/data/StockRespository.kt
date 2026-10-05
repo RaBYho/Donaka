@@ -1,9 +1,15 @@
 package com.example.donaka100.data
 
-import kotlinx.coroutines.delay
+import com.example.donaka100.DonakaApplication
+import com.example.donaka100.data.local.entity.AchatEntity
+import com.example.donaka100.data.local.entity.FournisseurEntity
+import com.example.donaka100.data.local.entity.IngredientEntity
+import com.example.donaka100.data.local.entity.MouvementStockEntity
+import com.example.donaka100.data.local.entity.PrixIngredientEntity
+import com.example.donaka100.data.local.toDomain
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 import kotlin.math.abs
-import kotlin.time.Duration.Companion.milliseconds
 
 interface StockRepository {
     suspend fun getIngredients(): List<Ingredient>
@@ -26,170 +32,322 @@ interface StockRepository {
     suspend fun supprimerFournisseur(nom: String)
 }
 
-class FakeStockRepository(avecDemo: Boolean = true) : StockRepository {
+class RoomStockRepository : StockRepository {
 
-    private val db = FakeBackend
+    private val db get() = DonakaApplication.instance.database
+    private val stockDao get() = db.stockDao()
+    private val fournisseurDao get() = db.fournisseurDao()
+    private val achatDao get() = db.achatDao()
+    private val fourneeDao get() = db.fourneeDao()
 
-    init { if (avecDemo) db.chargerDemo() }
+    override suspend fun getIngredients(): List<Ingredient> {
+        return stockDao.getAllIngredients().first().map { it.toDomain() }
+    }
 
-    private fun utiliseDansRecette(id: String) =
-        db.produits.any { p -> !p.archive && p.recette.any { it.ingredientId == id } }
+    override suspend fun getProduits(): List<Produit> {
+        return stockDao.getAllProduitsWithRecette().first().map { it.toDomain() }
+    }
 
-    override suspend fun getIngredients(): List<Ingredient> { delay(500.milliseconds); return db.ingredients }
-    override suspend fun getProduits() = db.produits
-    override suspend fun getFournees() = db.fournees
-    override suspend fun getMouvements() = db.mouvements
+    override suspend fun getFournees(): List<Fournee> {
+        return fourneeDao.getAllFourneesWithDetails().first().map { it.toDomain() }
+    }
+
+    override suspend fun getMouvements(): List<MouvementStock> {
+        return stockDao.getAllMouvementsStock().first().map { it.toDomain() }
+    }
 
     override suspend fun creerIngredient(i: NouvelIngredient) {
-        delay(300.milliseconds)
-        require(db.ingredients.none { it.nom.cleNom() == i.nom.cleNom() }) { "Ingrédient déjà existant" }
-        val ing = Ingredient(
-            UUID.randomUUID().toString(), i.nom.nettoyerNom(), i.unite, i.quantite, i.seuil,
-            i.rayon.nettoyerNom(), i.fournisseur.nettoyerNom()
+        val tous = getIngredients()
+        require(tous.none { it.nom.cleNom() == i.nom.cleNom() }) { "Ingrédient déjà existant" }
+
+        val id = UUID.randomUUID().toString()
+        val nomClean = i.nom.nettoyerNom()
+        val rayonClean = i.rayon.nettoyerNom()
+        val fournisseurClean = i.fournisseur.nettoyerNom()
+
+        val entity = IngredientEntity(
+            id = id,
+            nom = nomClean,
+            unite = i.unite,
+            quantite = i.quantite,
+            seuil = i.seuil,
+            rayon = rayonClean,
+            fournisseur = fournisseurClean,
+            archive = false
         )
-        db.ingredients += ing
+        stockDao.insertIngredient(entity)
+
         if (i.quantite > 0) {
-            db.noter(ing.id, ing.nom, TypeMouvementStock.ENTREE, i.quantite, "Stock initial")
+            val mouvement = MouvementStockEntity(
+                id = UUID.randomUUID().toString(),
+                ingredientId = id,
+                ingredientNom = nomClean,
+                dateHeure = System.currentTimeMillis(),
+                type = TypeMouvementStock.ENTREE,
+                quantite = i.quantite,
+                motif = "Stock initial",
+                montant = null,
+                fournisseur = fournisseurClean,
+                estAchat = false,
+                mode = null,
+                annule = false,
+                unite = i.unite
+            )
+            stockDao.insertMouvementStock(mouvement)
         }
     }
 
     override suspend fun modifierIngredient(id: String, i: NouvelIngredient) {
-        delay(300.milliseconds)
-        val ancien = db.ingredients.first { it.id == id }
-        require(db.ingredients.none { it.id != id && it.nom.cleNom() == i.nom.cleNom() }) { "Nom déjà pris" }
-        require(ancien.unite == i.unite || !utiliseDansRecette(id)) { "Unité verrouillée" }
+        val ingEntity = stockDao.getIngredientByIdSync(id) ?: return
+        val nomClean = i.nom.nettoyerNom()
+        val tous = getIngredients()
+        require(tous.none { it.id != id && it.nom.cleNom() == nomClean.cleNom() }) { "Nom déjà pris" }
 
-        db.ingredients = db.ingredients.map {
-            if (it.id != id) it
-            else it.copy(
-                nom = i.nom.nettoyerNom(), unite = i.unite, quantite = i.quantite, seuil = i.seuil,
-                rayon = i.rayon.nettoyerNom(), fournisseur = i.fournisseur.nettoyerNom()
-            )
-        }
-        val ecart = i.quantite - ancien.quantite
+        val updated = ingEntity.copy(
+            nom = nomClean,
+            unite = i.unite,
+            quantite = i.quantite,
+            seuil = i.seuil,
+            rayon = i.rayon.nettoyerNom(),
+            fournisseur = i.fournisseur.nettoyerNom()
+        )
+        stockDao.updateIngredient(updated)
+
+        val ecart = i.quantite - ingEntity.quantite
         if (abs(ecart) > 0.0005) {
-            db.noter(id, i.nom.nettoyerNom(), TypeMouvementStock.AJUSTEMENT, ecart, "Correction de la fiche")
+            val mouvement = MouvementStockEntity(
+                id = UUID.randomUUID().toString(),
+                ingredientId = id,
+                ingredientNom = nomClean,
+                dateHeure = System.currentTimeMillis(),
+                type = TypeMouvementStock.AJUSTEMENT,
+                quantite = ecart,
+                motif = "Correction de la fiche",
+                montant = null,
+                fournisseur = i.fournisseur.nettoyerNom(),
+                estAchat = false,
+                mode = null,
+                annule = false,
+                unite = i.unite
+            )
+            stockDao.insertMouvementStock(mouvement)
         }
     }
 
     override suspend fun supprimerIngredient(id: String) {
-        delay(300.milliseconds)
-        check(!utiliseDansRecette(id)) { "Ingrédient utilisé dans une recette" }
-        db.ingredients = db.ingredients.filterNot { it.id == id }
-        // Les produits archivés ne sont plus modifiables : on nettoie leur recette
-        db.produits = db.produits.map {
-            if (it.archive) it.copy(recette = it.recette.filterNot { l -> l.ingredientId == id }) else it
-        }
+        stockDao.softDeleteIngredient(id)
     }
 
     override suspend fun ajuster(id: String, nouvelleQuantite: Double, motif: String) {
-        delay(300.milliseconds)
-        val ing = db.ingredients.first { it.id == id }
-        val ecart = nouvelleQuantite - ing.quantite
+        val ingEntity = stockDao.getIngredientByIdSync(id) ?: return
+        val ecart = nouvelleQuantite - ingEntity.quantite
         if (abs(ecart) < 0.0005) return
-        db.ingredients = db.ingredients.map {
-            if (it.id == id) it.copy(quantite = nouvelleQuantite.coerceAtLeast(0.0)) else it
-        }
-        db.noter(id, ing.nom, TypeMouvementStock.AJUSTEMENT, ecart, motif.ifBlank { "Ajustement après comptage" })
+
+        stockDao.ajusterQuantiteIngredient(id, ecart)
+
+        val mouvement = MouvementStockEntity(
+            id = UUID.randomUUID().toString(),
+            ingredientId = id,
+            ingredientNom = ingEntity.nom,
+            dateHeure = System.currentTimeMillis(),
+            type = TypeMouvementStock.AJUSTEMENT,
+            quantite = ecart,
+            motif = motif.ifBlank { "Ajustement après comptage" },
+            montant = null,
+            fournisseur = ingEntity.fournisseur,
+            estAchat = false,
+            mode = null,
+            annule = false,
+            unite = ingEntity.unite
+        )
+        stockDao.insertMouvementStock(mouvement)
     }
 
     override suspend fun acheter(a: NouvelAchat): Boolean {
-        delay(300.milliseconds)
         val cle = a.nom.cleNom()
         val fournisseur = a.fournisseur.nettoyerNom()
         var cree = false
 
-        var ing = db.ingredients.firstOrNull { it.nom.cleNom() == cle }
-        if (ing == null) {
-            ing = Ingredient(UUID.randomUUID().toString(), a.nom.nettoyerNom(), a.unite, 0.0, 0.0, "", fournisseur)
-            db.ingredients += ing
+        val tous = stockDao.getAllIngredients().first()
+        var ingEntity = tous.firstOrNull { it.nom.cleNom() == cle }
+
+        if (ingEntity == null) {
+            val newId = UUID.randomUUID().toString()
+            ingEntity = IngredientEntity(
+                id = newId,
+                nom = a.nom.nettoyerNom(),
+                unite = a.unite,
+                quantite = 0.0,
+                seuil = 0.0,
+                rayon = "",
+                fournisseur = fournisseur,
+                archive = false
+            )
+            stockDao.insertIngredient(ingEntity)
             cree = true
         }
-        val id = ing.id
-        db.ingredients = db.ingredients.map {
-            if (it.id != id) it
-            else it.copy(
-                quantite = it.quantite + a.quantite,
-                fournisseur = fournisseur.ifBlank { it.fournisseur }
-            )
+
+        val id = ingEntity.id
+        stockDao.ajusterQuantiteIngredient(id, a.quantite)
+
+        if (fournisseur.isNotBlank()) {
+            val updatedIng = stockDao.getIngredientByIdSync(id)
+            if (updatedIng != null && updatedIng.fournisseur.isBlank()) {
+                stockDao.updateIngredient(updatedIng.copy(fournisseur = fournisseur))
+            }
         }
-        db.noter(
-            id, ing.nom, TypeMouvementStock.ENTREE, a.quantite, "Achat", a.montant, fournisseur,
-            estAchat = true, mode = a.mode
+
+        val maintenant = System.currentTimeMillis()
+        val mouvementId = UUID.randomUUID().toString()
+
+        val mouvement = MouvementStockEntity(
+            id = mouvementId,
+            ingredientId = id,
+            ingredientNom = ingEntity.nom,
+            dateHeure = maintenant,
+            type = TypeMouvementStock.ENTREE,
+            quantite = a.quantite,
+            motif = "Achat",
+            montant = a.montant,
+            fournisseur = fournisseur,
+            estAchat = true,
+            mode = a.mode,
+            annule = false,
+            unite = a.unite
         )
+        stockDao.insertMouvementStock(mouvement)
+
+        val achatEntity = AchatEntity(
+            id = mouvementId,
+            fournisseurId = null,
+            fournisseurNom = fournisseur,
+            ingredientId = id,
+            ingredientNom = ingEntity.nom,
+            dateHeure = maintenant,
+            quantite = a.quantite,
+            montant = a.montant,
+            mode = a.mode,
+            echeance = null,
+            annule = false
+        )
+        achatDao.insertAchat(achatEntity)
+
+        if (a.montant != null && a.montant > 0 && a.quantite > 0) {
+            val prixParUnite = a.montant / a.quantite.toLong().coerceAtLeast(1L)
+            val prixEntity = PrixIngredientEntity(
+                id = UUID.randomUUID().toString(),
+                ingredientId = id,
+                prixParUnite = prixParUnite,
+                dateEnregistrement = maintenant,
+                fournisseur = fournisseur
+            )
+            stockDao.insertPrixIngredient(prixEntity)
+        }
+
         return cree
     }
+
     override suspend fun modifierAchat(mouvementId: String, m: ModificationAchat) {
-        delay(300.milliseconds)
-        val mv = db.mouvements.first { it.id == mouvementId }
-        check(mv.estAchat && !mv.annule) { "Achat non modifiable" }
-        db.mouvements = db.mouvements.map {
-            if (it.id == mouvementId)
-                it.copy(montant = m.montant, fournisseur = m.fournisseur.nettoyerNom(), mode = m.mode)
-            else it
+        val mouvement = stockDao.getAllMouvementsStock().first().firstOrNull { it.id == mouvementId } ?: return
+        if (!mouvement.estAchat || mouvement.annule) return
+
+        val updatedMouvement = mouvement.copy(
+            montant = m.montant,
+            fournisseur = m.fournisseur.nettoyerNom(),
+            mode = m.mode
+        )
+        stockDao.insertMouvementStock(updatedMouvement)
+
+        val achat = achatDao.getAchatByIdSync(mouvementId)
+        if (achat != null) {
+            achatDao.updateAchat(
+                achat.copy(
+                    montant = m.montant,
+                    fournisseurNom = m.fournisseur.nettoyerNom(),
+                    mode = m.mode
+                )
+            )
         }
     }
 
     override suspend fun annulerAchat(mouvementId: String) {
-        delay(300.milliseconds)
-        val mv = db.mouvements.first { it.id == mouvementId }
-        check(mv.estAchat && !mv.annule) { "Achat déjà annulé" }
-        val ing = checkNotNull(db.ingredients.firstOrNull { it.id == mv.ingredientId }) { "Ingrédient supprimé" }
-        check(ing.quantite + 0.0005 >= mv.quantite) { "Stock insuffisant pour annuler" }
+        val mouvement = stockDao.getAllMouvementsStock().first().firstOrNull { it.id == mouvementId } ?: return
+        if (!mouvement.estAchat || mouvement.annule) return
 
-        db.ingredients = db.ingredients.map {
-            if (it.id == ing.id) it.copy(quantite = (it.quantite - mv.quantite).coerceAtLeast(0.0)) else it
-        }
-        db.mouvements = db.mouvements.map { if (it.id == mouvementId) it.copy(annule = true) else it }
-        db.noter(ing.id, ing.nom, TypeMouvementStock.SORTIE, -mv.quantite, "Annulation d'achat")
+        val ingEntity = stockDao.getIngredientByIdSync(mouvement.ingredientId) ?: return
+
+        stockDao.ajusterQuantiteIngredient(ingEntity.id, -mouvement.quantite)
+        stockDao.annulerAchatMouvement(mouvementId)
+        achatDao.annulerAchat(mouvementId)
+
+        val annulationMouvement = MouvementStockEntity(
+            id = UUID.randomUUID().toString(),
+            ingredientId = ingEntity.id,
+            ingredientNom = ingEntity.nom,
+            dateHeure = System.currentTimeMillis(),
+            type = TypeMouvementStock.SORTIE,
+            quantite = -mouvement.quantite,
+            motif = "Annulation d'achat",
+            montant = null,
+            fournisseur = mouvement.fournisseur,
+            estAchat = false,
+            mode = null,
+            annule = false,
+            unite = ingEntity.unite
+        )
+        stockDao.insertMouvementStock(annulationMouvement)
     }
-    override suspend fun getFiches() = db.fiches
+
+    override suspend fun getFiches(): List<FicheFournisseur> {
+        return fournisseurDao.getAllFournisseurs().first().map { it.toDomain() }
+    }
 
     override suspend fun creerFournisseur(f: NouveauFournisseur) {
-        delay(300.milliseconds)
-        require(db.fiches.none { it.nom.cleNom() == f.nom.cleNom() }) { "Fiche déjà existante" }
-        db.fiches += FicheFournisseur(
-                    UUID.randomUUID().toString(), f.nom.nettoyerNom(), f.telephone,
-                    f.adresse.nettoyerNom(), f.delai.nettoyerNom()
-                )
+        val tous = getFiches()
+        require(tous.none { it.nom.cleNom() == f.nom.cleNom() }) { "Fiche déjà existante" }
+
+        val entity = FournisseurEntity(
+            id = UUID.randomUUID().toString(),
+            nom = f.nom.nettoyerNom(),
+            telephone = f.telephone,
+            adresse = f.adresse.nettoyerNom(),
+            delai = f.delai.nettoyerNom(),
+            archive = false
+        )
+        fournisseurDao.insertFournisseur(entity)
     }
 
     override suspend fun modifierFournisseur(ancienNom: String, f: NouveauFournisseur) {
-        delay(300.milliseconds)
-        val ancienneCle = ancienNom.cleNom()
         val nouveauNom = f.nom.nettoyerNom()
-        val nouvelleCle = nouveauNom.cleNom()
-        require(nouvelleCle == ancienneCle || db.fiches.none { it.nom.cleNom() == nouvelleCle }) { "Nom déjà pris" }
 
-        val existante = db.fiches.firstOrNull { it.nom.cleNom() == ancienneCle }
-        db.fiches =
-            if (existante != null) db.fiches.map {
-                if (it.id == existante.id)
-                    it.copy(nom = nouveauNom, telephone = f.telephone,
-                        adresse = f.adresse.nettoyerNom(), delai = f.delai.nettoyerNom())
-                else it
-            }
-            else db.fiches + FicheFournisseur(
-                UUID.randomUUID().toString(), nouveauNom, f.telephone,
-                f.adresse.nettoyerNom(), f.delai.nettoyerNom()
+        val existante = fournisseurDao.getFournisseurByNomSync(ancienNom)
+        if (existante != null) {
+            fournisseurDao.updateFournisseur(
+                existante.copy(
+                    nom = nouveauNom,
+                    telephone = f.telephone,
+                    adresse = f.adresse.nettoyerNom(),
+                    delai = f.delai.nettoyerNom()
+                )
             )
-
-        // Le nouveau nom suit partout : ingrédients et achats passés
-        db.ingredients = db.ingredients.map {
-            if (it.fournisseur.cleNom() == ancienneCle) it.copy(fournisseur = nouveauNom) else it
-        }
-        db.mouvements = db.mouvements.map {
-            if (it.fournisseur.cleNom() == ancienneCle) it.copy(fournisseur = nouveauNom) else it
+        } else {
+            fournisseurDao.insertFournisseur(
+                FournisseurEntity(
+                    id = UUID.randomUUID().toString(),
+                    nom = nouveauNom,
+                    telephone = f.telephone,
+                    adresse = f.adresse.nettoyerNom(),
+                    delai = f.delai.nettoyerNom(),
+                    archive = false
+                )
+            )
         }
     }
 
     override suspend fun supprimerFournisseur(nom: String) {
-        delay(300.milliseconds)
-        val cle = nom.cleNom()
-        db.fiches = db.fiches.filterNot { it.nom.cleNom() == cle }
-        db.ingredients = db.ingredients.map {
-            if (it.fournisseur.cleNom() == cle) it.copy(fournisseur = "") else it
+        val f = fournisseurDao.getFournisseurByNomSync(nom)
+        if (f != null) {
+            fournisseurDao.softDeleteFournisseur(f.id)
         }
-        // Les mouvements d'achat gardent le nom : c'est l'historique
     }
 }

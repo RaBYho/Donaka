@@ -99,7 +99,7 @@ fun FournisseursTab(
                 item {
                     DonakaSearchBar(
                         value = etat.rechercheFournisseur, onValueChange = onRecherche,
-                        placeholder = "Rechercher un fournisseur, un ingrédient…"
+                        placeholder = "Rechercher…"
                     )
                 }
                 if (etat.rayonsFournisseurs.isNotEmpty()) {
@@ -210,7 +210,7 @@ private fun CarteFournisseur(
                     Text(f.telephone.enTelephone(), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TexteFonce)
                 }
                 if (f.telephone.isNotBlank() && f.delai.isNotBlank()) {
-                    Text("  •  ", color = TexteGris)
+                    Text("     ", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (f.delai.isNotBlank()) {
                     Icon(Icons.Default.Schedule, null, tint = Vert, modifier = Modifier.size(14.dp))

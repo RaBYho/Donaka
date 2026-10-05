@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,9 +36,9 @@ fun PreparerTab(
     onAnnuler: (Fournee) -> Unit,
     onVoirRecettes: () -> Unit
 ) {
-    val plan = etat.plan
-    val besoins = etat.besoinsPlan
-    val manquants = besoins.filterNot { it.suffisant }
+    val plan = remember(etat.commandes, etat.produits) { etat.plan }
+    val besoins = remember(plan, etat.ingredients) { etat.besoinsPlan }
+    val manquants = remember(besoins) { besoins.filterNot { it.suffisant } }
     val fournee = etat.fourneeDemain
 
     LazyColumn(

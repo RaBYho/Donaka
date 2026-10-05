@@ -3,12 +3,12 @@ package com.example.donaka100.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.donaka100.data.*
-import com.example.donaka100.ui.forms.FormulaireVente
-import com.example.donaka100.ui.forms.ModePaiement
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface BoardUiState {
     data object Loading : BoardUiState
@@ -16,15 +16,17 @@ sealed interface BoardUiState {
     data class Error(val message: String) : BoardUiState
 }
 
+/**
+ * ViewModel réactif pour le Tableau de bord Donaka.
+ * Exécute tous les calculs sur Dispatchers.Default / IO pour éviter les saccades sur le Thread UI.
+ */
 class BoardViewModel(
-    // Demain : ApiBoardRepository(...) ici, c'est le seul endroit à changer
-    private val repository: BoardRepository = FakeBoardRepository()
+    private val repository: BoardRepository = RoomBoardRepository()
 ) : ViewModel() {
 
     private val _etat = MutableStateFlow<BoardUiState>(BoardUiState.Loading)
     val etat: StateFlow<BoardUiState> = _etat.asStateFlow()
 
-    // Messages ponctuels (snackbar) : consommés une seule fois
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
@@ -34,7 +36,9 @@ class BoardViewModel(
         viewModelScope.launch {
             _etat.value = BoardUiState.Loading
             try {
-                _etat.value = BoardUiState.Success(repository.getBoard())
+                // Transfert du calcul sur le thread d'arrière-plan pour une réactivité maximale
+                val result = withContext(Dispatchers.Default) { repository.getBoard() }
+                _etat.value = BoardUiState.Success(result)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -43,20 +47,31 @@ class BoardViewModel(
         }
     }
 
-    fun enregistrerVente(form: FormulaireVente) {
+    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton intrusive */
+    fun actualiser() {
         viewModelScope.launch {
             try {
-                repository.ajouterVente(
-                    NouvelleVente(
-                        libelle = form.client.ifBlank { form.produit },
-                        detail = form.mode.libelle,
-                        montant = form.total,
-                        aCredit = form.mode == ModePaiement.CREDIT
-                    )
-                )
-                // Recharge sans repasser par Loading, donc pas de clignotement
-                _etat.value = BoardUiState.Success(repository.getBoard())
-                _messages.send("Vente enregistrée")
+                val result = withContext(Dispatchers.Default) { repository.getBoard() }
+                _etat.value = BoardUiState.Success(result)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun creerClient(c: NouveauClient) =
+        action("Client « ${c.nom} » ajouté") { repository.creerClient(c) }
+
+    fun acheter(a: NouvelAchat) =
+        action("Achat enregistré") { repository.acheter(a) }
+
+    private fun action(succes: String, bloc: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { bloc() }
+                val result = withContext(Dispatchers.Default) { repository.getBoard() }
+                _etat.value = BoardUiState.Success(result)
+                _messages.send(succes)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

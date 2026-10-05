@@ -59,7 +59,7 @@ fun ClientCard(
                     Text(
                         buildString {
                             append(client.telephone.enTelephone())
-                            if (client.quartier.isNotBlank()) append(" • ${client.quartier}")
+                            if (client.quartier.isNotBlank()) append("   ${client.quartier}")
                         },
                         fontSize = 12.sp, color = TexteGris,
                         maxLines = 1, overflow = TextOverflow.Ellipsis

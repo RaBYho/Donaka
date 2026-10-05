@@ -14,7 +14,7 @@ import com.example.donaka100.ui.components.TypeBadge
 import com.example.donaka100.ui.theme.TexteFonce
 
 @Composable
-fun BoardGreeting(nom: String, fournilOuvert: Boolean) {
+fun BoardGreeting(nom: String, fournilOuvert: Boolean?) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -23,16 +23,15 @@ fun BoardGreeting(nom: String, fournilOuvert: Boolean) {
         Text(
             text = if (nom.isBlank()) "Bonjour 👋" else "Bonjour $nom 👋",
             modifier = Modifier.weight(1f, fill = false),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = TexteFonce,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TexteFonce,
+            maxLines = 1, overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.width(8.dp))
-        DonakaBadge(
-            texte = if (fournilOuvert) "FOURNIL OUVERT" else "FOURNIL FERMÉ",
-            type = if (fournilOuvert) TypeBadge.SUCCES else TypeBadge.NEUTRE
-        )
+        if (fournilOuvert != null) {
+            Spacer(Modifier.width(8.dp))
+            DonakaBadge(
+                texte = if (fournilOuvert) "FOURNIL OUVERT" else "FOURNIL FERMÉ",
+                type = if (fournilOuvert) TypeBadge.SUCCES else TypeBadge.NEUTRE
+            )
+        }
     }
 }

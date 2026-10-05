@@ -78,7 +78,7 @@ fun AchatsTab(
                 item {
                     DonakaSearchBar(
                         value = etat.rechercheAchat, onValueChange = onRecherche,
-                        placeholder = "Rechercher un ingrédient, un fournisseur…"
+                        placeholder = "Rechercher…"
                     )
                 }
                 item {

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -77,6 +78,9 @@ private fun iconeCategorie(l: LigneDepense): ImageVector {
     }
 }
 
+/**
+ * Écran de gestion des dépenses opérationnelles.
+ */
 @Composable
 fun DepensesScreen(
     onVoirStock: () -> Unit = {},
@@ -87,7 +91,7 @@ fun DepensesScreen(
     var dialogue by remember { mutableStateOf<DialogueDepense?>(null) }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
-
+    LaunchedEffect(Unit) { vm.actualiser() }
     val mois = remember {
         val m = LocalDate.now()
         m.month.getDisplayName(TextStyle.FULL, Locale.FRENCH).replaceFirstChar { it.uppercase() } + " ${m.year}"
@@ -157,24 +161,24 @@ private fun Contenu(
     onSupprimer: (Depense) -> Unit,
     onVoirAchat: () -> Unit
 ) {
-    val liste = etat.lignesAffichees
+    val liste = remember(etat.depenses, etat.achats, etat.recherche, etat.filtre) { etat.lignesAffichees }
     val groupes = remember(liste) { liste.groupBy { it.dateHeure.toLocalDate() } }
 
     LazyColumn(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().graphicsLayer { alpha = 0.99f },
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         userScrollEnabled = !etat.isLoading
     ) {
-        item {
+        item(key = "add_depense_btn") {
             DonakaButton("Ajouter une dépense", onAjouter, icone = Icons.Default.Add, pleineLargeur = true)
         }
-        item { Resume(etat) }
+        item(key = "resume_depenses") { Resume(etat) }
 
         when {
-            etat.isLoading -> items(3) { DonakaCard(isLoading = true) {} }
+            etat.isLoading -> items(3, key = { "skeleton_depense_$it" }) { DonakaCard(isLoading = true) {} }
 
-            etat.lignes.isEmpty() -> item {
+            etat.lignes.isEmpty() -> item(key = "empty_depenses") {
                 Vide(
                     Icons.Default.Receipt, "Aucune dépense",
                     "Ajoute ta première dépense avec le bouton ci-dessus. Les achats de stock apparaîtront ici aussi."
@@ -182,18 +186,20 @@ private fun Contenu(
             }
 
             else -> {
-                item {
+                item(key = "search_depenses") {
                     DonakaSearchBar(
                         value = etat.recherche, onValueChange = onRecherche,
-                        placeholder = "Rechercher une dépense, une catégorie…"
+                        placeholder = "Rechercher…"
                     )
                 }
-                item {
-                    val options = buildList<FiltreDepense> {
-                        add(FiltreDepense.Tout)
-                        add(FiltreDepense.Aujourdhui)
-                        add(FiltreDepense.CeMois)
-                        etat.categoriesLignes.forEach { add(FiltreDepense.Categorie(it)) }
+                item(key = "filter_chips_depenses") {
+                    val options = remember(etat.categoriesLignes, etat.nbAujourdhui) {
+                        buildList<FiltreDepense> {
+                            add(FiltreDepense.Tout)
+                            add(FiltreDepense.Aujourdhui)
+                            add(FiltreDepense.CeMois)
+                            etat.categoriesLignes.forEach { add(FiltreDepense.Categorie(it)) }
+                        }
                     }
                     DonakaFilterChips(
                         options = options, selected = etat.filtreEffectif, onSelect = onFiltre,
@@ -207,10 +213,10 @@ private fun Contenu(
                         }
                     )
                 }
-                item { Text("Historique des dépenses", fontWeight = FontWeight.Bold, color = TexteFonce) }
+                item(key = "title_depenses") { Text("Historique des dépenses", fontWeight = FontWeight.Bold, color = TexteFonce) }
 
                 if (liste.isEmpty()) {
-                    item { Vide(Icons.Default.SearchOff, "Aucune dépense trouvée", "Essaie une autre recherche ou un autre filtre.") }
+                    item(key = "no_search_results") { Vide(Icons.Default.SearchOff, "Aucune dépense trouvée", "Essaie une autre recherche ou un autre filtre.") }
                 } else {
                     groupes.forEach { (date, lignes) ->
                         item(key = "titre-$date") { TitreJour(date, lignes) }
@@ -231,6 +237,8 @@ private fun Contenu(
 
 @Composable
 private fun Resume(etat: DepenseUiState) {
+    val rep = remember(etat.depenses, etat.achats) { etat.repartition }
+
     DonakaCard(isLoading = etat.isLoading) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.AccountBalanceWallet, null, tint = Primary, modifier = Modifier.size(20.dp))
@@ -239,7 +247,6 @@ private fun Resume(etat: DepenseUiState) {
         }
         Text(etat.totalMois.enMGA(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TexteFonce)
 
-        val rep = etat.repartition
         if (rep.isNotEmpty()) {
             val n = rep.size
             Text(

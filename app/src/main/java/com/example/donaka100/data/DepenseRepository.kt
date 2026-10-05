@@ -1,9 +1,12 @@
 package com.example.donaka100.data
 
-import kotlinx.coroutines.delay
+import com.example.donaka100.DonakaApplication
+import com.example.donaka100.data.local.entity.DepenseEntity
+import com.example.donaka100.data.local.toDomain
+import kotlinx.coroutines.flow.first
 import java.time.LocalTime
+import java.time.ZoneOffset
 import java.util.UUID
-import kotlin.time.Duration.Companion.milliseconds
 
 interface DepenseRepository {
     suspend fun getDepenses(): List<Depense>
@@ -15,40 +18,47 @@ interface DepenseRepository {
     suspend fun supprimer(id: String)
 }
 
-class FakeDepenseRepository(avecDemo: Boolean = true) : DepenseRepository {
+class RoomDepenseRepository : DepenseRepository {
 
-    private val db = FakeBackend
+    private val db get() = DonakaApplication.instance.database
+    private val depenseDao get() = db.depenseDao()
+    private val stockDao get() = db.stockDao()
 
-    init { if (avecDemo) db.chargerDemo() }
+    override suspend fun getDepenses(): List<Depense> {
+        return depenseDao.getAllDepenses().first().map { it.toDomain() }
+    }
 
-    override suspend fun getDepenses(): List<Depense> { delay(500.milliseconds); return db.depenses }
-    override suspend fun getAchats() = db.mouvements.filter { it.estAchat }
+    override suspend fun getAchats(): List<MouvementStock> {
+        return stockDao.getAllMouvementsStock().first().map { it.toDomain() }.filter { it.estAchat }
+    }
 
     override suspend fun creer(d: NouvelleDepense) {
-        delay(300.milliseconds)
         require(d.montant > 0)
-        db.depenses += Depense(
-                    UUID.randomUUID().toString(), d.categorie.nettoyerNom(), d.montant,
-                    d.note.nettoyerNom(), d.date.atTime(LocalTime.now()), d.mode
-                )
+        val entity = DepenseEntity(
+            id = UUID.randomUUID().toString(),
+            categorie = d.categorie.nettoyerNom(),
+            montant = d.montant,
+            note = d.note.nettoyerNom(),
+            dateHeure = d.date.atTime(LocalTime.now()).toInstant(ZoneOffset.UTC).toEpochMilli(),
+            mode = d.mode,
+            annule = false
+        )
+        depenseDao.insertDepense(entity)
     }
 
     override suspend fun modifier(id: String, d: NouvelleDepense) {
-        delay(300.milliseconds)
-        db.depenses = db.depenses.map {
-            if (it.id != id) it
-            else it.copy(
-                categorie = d.categorie.nettoyerNom(), montant = d.montant,
-                note = d.note.nettoyerNom(), mode = d.mode,
-                // même jour : on garde l'heure d'origine
-                dateHeure = if (it.dateHeure.toLocalDate() == d.date) it.dateHeure
-                else d.date.atTime(LocalTime.now())
-            )
-        }
+        val existante = depenseDao.getDepenseByIdSync(id) ?: return
+        val updated = existante.copy(
+            categorie = d.categorie.nettoyerNom(),
+            montant = d.montant,
+            note = d.note.nettoyerNom(),
+            dateHeure = d.date.atTime(LocalTime.now()).toInstant(ZoneOffset.UTC).toEpochMilli(),
+            mode = d.mode
+        )
+        depenseDao.updateDepense(updated)
     }
 
     override suspend fun supprimer(id: String) {
-        delay(300.milliseconds)
-        db.depenses = db.depenses.filterNot { it.id == id }
+        depenseDao.softDeleteDepense(id)
     }
 }

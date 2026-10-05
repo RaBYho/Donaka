@@ -12,26 +12,43 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
+/**
+ * Modifier shimmer optimisé avec `graphicsLayer` pour solliciter le GPU
+ * et offrir un balayage fluide et apaisant.
+ */
 fun Modifier.shimmer(): Modifier = composed {
-    val transition = rememberInfiniteTransition(label = "shimmer")
+    val transition = rememberInfiniteTransition(label = "shimmerTransition")
     val decalage by transition.animateFloat(
         initialValue = 0f,
-        targetValue = 1200f,
-        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing)),
-        label = "decalage"
+        targetValue = 1300f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmerDecalage"
     )
-    background(
-        Brush.linearGradient(
-            colors = listOf(Color(0xFFE7EEFF), Color(0xFFF7F9FF), Color(0xFFE7EEFF)),
-            start = Offset(decalage - 600f, 0f),
-            end = Offset(decalage, 0f)
+    this
+        .graphicsLayer { alpha = 0.99f } // Rendu sur la couche GPU
+        .background(
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFFE8EEF8),
+                    Color(0xFFF8FAFF),
+                    Color(0xFFE8EEF8)
+                ),
+                start = Offset(decalage - 650f, 0f),
+                end = Offset(decalage, 0f)
+            )
         )
-    )
 }
 
+/**
+ * Ligne de squelette fluide pour l'état de chargement initial.
+ */
 @Composable
 fun SkeletonLine(
     largeur: Float = 1f,

@@ -1,5 +1,11 @@
 package com.example.donaka100.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
@@ -7,30 +13,31 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.donaka100.data.Ingredient
+import com.example.donaka100.data.MouvementStock
+import com.example.donaka100.data.StatutStock
+import com.example.donaka100.data.cleNom
+import com.example.donaka100.ui.Fournisseur
 import com.example.donaka100.ui.OngletStock
 import com.example.donaka100.ui.StockViewModel
 import com.example.donaka100.ui.components.*
 import com.example.donaka100.ui.forms.AchatFormSheet
 import com.example.donaka100.ui.forms.AjustementSheet
+import com.example.donaka100.ui.forms.FournisseurFormSheet
 import com.example.donaka100.ui.forms.IngredientFormSheet
-import com.example.donaka100.ui.screens.stock.InventaireTab
-import com.example.donaka100.ui.theme.*
-import com.example.donaka100.data.MouvementStock
 import com.example.donaka100.ui.forms.ModifierAchatSheet
 import com.example.donaka100.ui.screens.stock.AchatsTab
-import androidx.compose.ui.platform.LocalContext
-import com.example.donaka100.data.cleNom
-import com.example.donaka100.ui.Fournisseur
-import com.example.donaka100.ui.forms.FournisseurFormSheet
 import com.example.donaka100.ui.screens.stock.FournisseursTab
+import com.example.donaka100.ui.screens.stock.InventaireTab
+import com.example.donaka100.ui.theme.*
 import com.example.donaka100.ui.util.ouvrirAppel
-import com.example.donaka100.data.StatutStock
+
 private sealed interface DialogueStock {
     data object Nouveau : DialogueStock
     data class Edition(val ingredient: Ingredient) : DialogueStock
@@ -46,6 +53,9 @@ private sealed interface DialogueStock {
     data class SupprimerFiche(val fournisseur: Fournisseur) : DialogueStock
 }
 
+/**
+ * Écran Stock avec navigation réactive, transitions douces et calculs isolés.
+ */
 @Composable
 fun StockScreen(vm: StockViewModel = viewModel()) {
     val etat by vm.etat.collectAsStateWithLifecycle()
@@ -54,6 +64,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(Unit) { vm.actualiser() }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -80,55 +91,67 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
                 )
             }
 
-            when {
-                etat.erreur != null -> DonakaEmptyState(
-                    titre = "Connexion impossible", message = etat.erreur!!,
-                    icone = Icons.Default.CloudOff,
-                    labelAction = "Réessayer", onAction = vm::charger
-                )
+            AnimatedContent(
+                targetState = etat.onglet,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing)) togetherWith
+                            fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing))
+                },
+                modifier = Modifier.weight(1f),
+                label = "stockTabTransition"
+            ) { onglet ->
+                when {
+                    etat.erreur != null -> DonakaEmptyState(
+                        titre = "Connexion impossible", message = etat.erreur!!,
+                        icone = Icons.Default.CloudOff,
+                        labelAction = "Réessayer", onAction = vm::charger
+                    )
 
-                etat.onglet == OngletStock.INVENTAIRE -> InventaireTab(
-                    etat = etat, modifier = Modifier.weight(1f),
-                    onAchat = { dialogue = DialogueStock.Acheter() },
-                    onNouveau = { dialogue = DialogueStock.Nouveau },
-                    onRecherche = vm::onRecherche,
-                    onFiltre = vm::onFiltre,
-                    onCommander = { dialogue = DialogueStock.Acheter(it.nom, it.fournisseur) },
-                    onAjuster = { dialogue = DialogueStock.Ajuster(it) },
-                    onModifier = { dialogue = DialogueStock.Edition(it) },
-                    onSupprimer = { ing ->
-                        val utilises = etat.produitsUtilisant(ing.id)
-                        dialogue =
-                            if (utilises.isEmpty()) DialogueStock.Supprimer(ing)
-                            else DialogueStock.Bloque(ing, utilises.map { it.nom })
-                    }
-                )
-                etat.onglet == OngletStock.ACHAT -> AchatsTab(
-                    etat = etat, modifier = Modifier.weight(1f),
-                    onAchat = { dialogue = DialogueStock.Acheter() },
-                    onRecherche = vm::onRechercheAchat,
-                    onFiltre = vm::onFiltreAchat,
-                    onModifier = { dialogue = DialogueStock.ModifierAchat(it) },
-                    onAnnuler = { m ->
-                        val raison = etat.raisonBlocageAnnulation(m)
-                        dialogue = if (raison == null) DialogueStock.AnnulerAchat(m) else DialogueStock.AnnulationBloquee(raison)
-                    }
-                )
-                else -> FournisseursTab(
-                    etat = etat, modifier = Modifier.weight(1f),
-                    onNouveau = { dialogue = DialogueStock.CreerFournisseur },
-                    onRecherche = vm::onRechercheFournisseur,
-                    onRayon = vm::onRayonFournisseur,
-                    onAppeler = { context.ouvrirAppel(it.telephone) },
-                    onCommander = { f ->
-                        val prefill = f.ingredients.firstOrNull { it.statut == StatutStock.CRITIQUE }?.nom
-                            ?: f.ingredients.singleOrNull()?.nom.orEmpty()
-                        dialogue = DialogueStock.Acheter(prefill, f.nom)
-                    },
-                    onModifier = { dialogue = DialogueStock.EditerFournisseur(it) },
-                    onVoirAchats = { vm.voirAchats(it.nom) },
-                    onSupprimerFiche = { dialogue = DialogueStock.SupprimerFiche(it) }
-                )
+                    onglet == OngletStock.INVENTAIRE -> InventaireTab(
+                        etat = etat, modifier = Modifier.fillMaxSize(),
+                        onAchat = { dialogue = DialogueStock.Acheter() },
+                        onNouveau = { dialogue = DialogueStock.Nouveau },
+                        onRecherche = vm::onRecherche,
+                        onFiltre = vm::onFiltre,
+                        onCommander = { dialogue = DialogueStock.Acheter(it.nom, it.fournisseur) },
+                        onAjuster = { dialogue = DialogueStock.Ajuster(it) },
+                        onModifier = { dialogue = DialogueStock.Edition(it) },
+                        onSupprimer = { ing ->
+                            val utilises = etat.produitsUtilisant(ing.id)
+                            dialogue =
+                                if (utilises.isEmpty()) DialogueStock.Supprimer(ing)
+                                else DialogueStock.Bloque(ing, utilises.map { it.nom })
+                        }
+                    )
+
+                    onglet == OngletStock.ACHAT -> AchatsTab(
+                        etat = etat, modifier = Modifier.fillMaxSize(),
+                        onAchat = { dialogue = DialogueStock.Acheter() },
+                        onRecherche = vm::onRechercheAchat,
+                        onFiltre = vm::onFiltreAchat,
+                        onModifier = { dialogue = DialogueStock.ModifierAchat(it) },
+                        onAnnuler = { m ->
+                            val raison = etat.raisonBlocageAnnulation(m)
+                            dialogue = if (raison == null) DialogueStock.AnnulerAchat(m) else DialogueStock.AnnulationBloquee(raison)
+                        }
+                    )
+
+                    else -> FournisseursTab(
+                        etat = etat, modifier = Modifier.fillMaxSize(),
+                        onNouveau = { dialogue = DialogueStock.CreerFournisseur },
+                        onRecherche = vm::onRechercheFournisseur,
+                        onRayon = vm::onRayonFournisseur,
+                        onAppeler = { context.ouvrirAppel(it.telephone) },
+                        onCommander = { f ->
+                            val prefill = f.ingredients.firstOrNull { it.statut == StatutStock.CRITIQUE }?.nom
+                                ?: f.ingredients.singleOrNull()?.nom.orEmpty()
+                            dialogue = DialogueStock.Acheter(prefill, f.nom)
+                        },
+                        onModifier = { dialogue = DialogueStock.EditerFournisseur(it) },
+                        onVoirAchats = { vm.voirAchats(it.nom) },
+                        onSupprimerFiche = { dialogue = DialogueStock.SupprimerFiche(it) }
+                    )
+                }
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
@@ -186,6 +209,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
             },
             confirmButton = { DonakaButton("Compris", onClick = { dialogue = null }, style = StyleBouton.TEXTE) }
         )
+
         is DialogueStock.ModifierAchat -> ModifierAchatSheet(
             achat = d.achat, fournisseurs = etat.fournisseurs,
             onDismiss = { dialogue = null },
@@ -208,6 +232,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
             text = { Text(d.raison, color = TexteGris) },
             confirmButton = { DonakaButton("Compris", onClick = { dialogue = null }, style = StyleBouton.TEXTE) }
         )
+
         DialogueStock.CreerFournisseur -> FournisseurFormSheet(
             autresNoms = etat.fiches.map { it.nom },
             onDismiss = { dialogue = null },

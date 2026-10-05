@@ -21,12 +21,12 @@ fun BoardCreancesCard(nombre: Int, total: Long, isLoading: Boolean, onRelancer: 
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Créances Clients", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TexteFonce)
+                    Text("Créances Clients", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                     if (nombre > 0) DonakaBadge("$nombre en attente", type = TypeBadge.ERREUR)
                 }
-                Text(total.enMGA(), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TexteFonce)
+                Text(total.enMGA(), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             }
-            if (nombre > 0) DonakaButton("Relancer", onRelancer, style = StyleBouton.SECONDAIRE)
+            if (nombre > 0) DonakaButton("Voir tout", onRelancer, style = StyleBouton.SECONDAIRE)
         }
     }
 }

@@ -1,5 +1,11 @@
 package com.example.donaka100.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -30,18 +37,13 @@ import com.example.donaka100.ui.util.ouvrirAppel
 import com.example.donaka100.ui.util.ouvrirSms
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
-/** Quelle feuille / boîte de dialogue est ouverte (une seule à la fois) */
 private sealed interface Dialogue {
-    // Clients
     data object Creation : Dialogue
     data class Edition(val client: Client) : Dialogue
     data class Actions(val client: Client) : Dialogue
     data class Encaisser(val client: Client) : Dialogue
     data class Suppression(val client: Client) : Dialogue
-    // Commandes
     data class CreerCommande(val clientId: String?) : Dialogue
     data class ModifierCommande(val commande: Commande) : Dialogue
     data class Livrer(val commande: Commande) : Dialogue
@@ -51,8 +53,15 @@ private sealed interface Dialogue {
     data class SupprimerCommande(val commande: Commande) : Dialogue
 }
 
+/**
+ * Écran de gestion des commandes et encaissements avec animations douces et réactivité.
+ */
 @Composable
-fun CommandeScreen(vm: CommandeViewModel = viewModel()) {
+fun CommandeScreen(
+    vm: CommandeViewModel = viewModel(),
+    ouvrirCreances: Boolean = false,
+    onCreancesOuvert: () -> Unit = {},
+) {
     val etat by vm.etat.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -60,27 +69,30 @@ fun CommandeScreen(vm: CommandeViewModel = viewModel()) {
     var dialogue by remember { mutableStateOf<Dialogue?>(null) }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(Unit) { vm.actualiser() }
 
-    val dateDuJour = remember {
-        LocalDate.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH))
+    LaunchedEffect(ouvrirCreances) {
+        if (ouvrirCreances) {
+            vm.onOnglet(OngletCommande.CREANCES)
+            onCreancesOuvert()
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            // Zone fixe : titre, onglets, recherche
             Column(
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Column {
-                    Text("Gestion des Commandes", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TexteFonce)
+                    Text("Gestion des Commandes", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text(
                         when (etat.onglet) {
-                            OngletCommande.DU_JOUR -> "Livraisons du jour • $dateDuJour"
+                            OngletCommande.DU_JOUR -> "Livraisons du jour"
                             OngletCommande.CREANCES -> "Suivi des soldes clients"
                             OngletCommande.HISTORIQUE -> "Journal des encaissements & règlements clients"
                         },
-                        fontSize = 12.sp, color = TexteGris
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 DonakaSegmentedToggle(
@@ -114,39 +126,49 @@ fun CommandeScreen(vm: CommandeViewModel = viewModel()) {
                 }
             }
 
-            when {
-                etat.erreur != null -> DonakaEmptyState(
-                    titre = "Connexion impossible", message = etat.erreur!!,
-                    icone = Icons.Default.CloudOff,
-                    labelAction = "Réessayer", onAction = vm::charger
-                )
+            AnimatedContent(
+                targetState = etat.onglet,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing)) togetherWith
+                            fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing))
+                },
+                modifier = Modifier.weight(1f),
+                label = "commandeTabTransition"
+            ) { onglet ->
+                when {
+                    etat.erreur != null -> DonakaEmptyState(
+                        titre = "Connexion impossible", message = etat.erreur!!,
+                        icone = Icons.Default.CloudOff,
+                        labelAction = "Réessayer", onAction = vm::charger
+                    )
 
-                etat.onglet == OngletCommande.DU_JOUR -> CommandesTab(
-                    etat = etat,
-                    modifier = Modifier.weight(1f),
-                    onNonPrevu = { dialogue = Dialogue.NonPrevu },
-                    onCommandeDemain = { dialogue = Dialogue.CreerCommande(null) },
-                    onLivrer = { dialogue = Dialogue.Livrer(it) },
-                    onModifier = { dialogue = Dialogue.ModifierCommande(it) },
-                    onSupprimer = { dialogue = Dialogue.SupprimerCommande(it) },
-                    onAnnuler = { dialogue = Dialogue.AnnulerLivraison(it) },
-                    onRattacher = { dialogue = Dialogue.Rattacher(it) },
-                    onAjouterDemain = { dialogue = Dialogue.CreerCommande(it) }
-                )
+                    onglet == OngletCommande.DU_JOUR -> CommandesTab(
+                        etat = etat,
+                        modifier = Modifier.fillMaxSize(),
+                        onNonPrevu = { dialogue = Dialogue.NonPrevu },
+                        onCommandeDemain = { dialogue = Dialogue.CreerCommande(null) },
+                        onLivrer = { dialogue = Dialogue.Livrer(it) },
+                        onModifier = { dialogue = Dialogue.ModifierCommande(it) },
+                        onSupprimer = { dialogue = Dialogue.SupprimerCommande(it) },
+                        onAnnuler = { dialogue = Dialogue.AnnulerLivraison(it) },
+                        onRattacher = { dialogue = Dialogue.Rattacher(it) },
+                        onAjouterDemain = { dialogue = Dialogue.CreerCommande(it) }
+                    )
 
-                etat.onglet == OngletCommande.HISTORIQUE -> HistoriqueTab(
-                    etat = etat,
-                    modifier = Modifier.weight(1f)
-                )
+                    onglet == OngletCommande.HISTORIQUE -> HistoriqueTab(
+                        etat = etat,
+                        modifier = Modifier.fillMaxSize()
+                    )
 
-                else -> ListeCreances(
-                    etat = etat,
-                    modifier = Modifier.weight(1f),
-                    onNouveau = { dialogue = Dialogue.Creation },
-                    onEncaisser = { dialogue = Dialogue.Encaisser(it) },
-                    onOptions = { dialogue = Dialogue.Actions(it) },
-                    onAppeler = { context.ouvrirAppel(it.telephone) }
-                )
+                    else -> ListeCreances(
+                        etat = etat,
+                        modifier = Modifier.fillMaxSize(),
+                        onNouveau = { dialogue = Dialogue.Creation },
+                        onEncaisser = { dialogue = Dialogue.Encaisser(it) },
+                        onOptions = { dialogue = Dialogue.Actions(it) },
+                        onAppeler = { context.ouvrirAppel(it.telephone) }
+                    )
+                }
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
@@ -155,7 +177,6 @@ fun CommandeScreen(vm: CommandeViewModel = viewModel()) {
     when (val d = dialogue) {
         null -> Unit
 
-        // ----- Clients -----
         Dialogue.Creation -> ClientFormSheet(
             onDismiss = { dialogue = null },
             onSave = { vm.creerClient(it); dialogue = null }
@@ -201,7 +222,6 @@ fun CommandeScreen(vm: CommandeViewModel = viewModel()) {
             onDismiss = { dialogue = null }
         )
 
-        // ----- Commandes -----
         is Dialogue.CreerCommande -> CommandeFormSheet(
             produits = etat.produits,
             clients = etat.clients,
@@ -256,6 +276,7 @@ fun CommandeScreen(vm: CommandeViewModel = viewModel()) {
         )
     }
 }
+
 @Composable
 private fun ListeCreances(
     etat: CommandeUiState,
@@ -265,22 +286,22 @@ private fun ListeCreances(
     onOptions: (Client) -> Unit,
     onAppeler: (Client) -> Unit
 ) {
-    val clients = etat.clientsAffiches
+    val clients = remember(etat.clients, etat.recherche) { etat.clientsAffiches }
 
     LazyColumn(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().graphicsLayer { alpha = 0.99f },
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         userScrollEnabled = !etat.isLoading
     ) {
-        item {
+        item(key = "nouveau_client_btn") {
             DonakaButton(
                 "Nouveau Client", onNouveau,
                 icone = Icons.Default.PersonAdd, pleineLargeur = true
             )
         }
-        item { CreancesBanner(etat.totalCreances, etat.nbDebiteurs, etat.isLoading) }
-        item {
+        item(key = "creances_banner") { CreancesBanner(etat.totalCreances, etat.nbDebiteurs, etat.isLoading) }
+        item(key = "creances_titre") {
             Text(
                 "Comptes Clients & Dépôts" + if (!etat.isLoading) " (${clients.size})" else "",
                 fontWeight = FontWeight.SemiBold, color = TexteFonce
@@ -288,9 +309,9 @@ private fun ListeCreances(
         }
 
         when {
-            etat.isLoading -> items(3) { DonakaCard(isLoading = true) {} }
+            etat.isLoading -> items(3, key = { "skeleton_client_$it" }) { DonakaCard(isLoading = true) {} }
 
-            clients.isEmpty() -> item {
+            clients.isEmpty() -> item(key = "aucun_client") {
                 AucunClient(recherche = etat.recherche.isNotBlank())
             }
 

@@ -69,7 +69,7 @@ fun FourneesTab(
                 item {
                     DonakaSearchBar(
                         value = etat.rechercheFournee, onValueChange = onRecherche,
-                        placeholder = "Rechercher par produit, ingrédient, date…"
+                        placeholder = "Rechercher…"
                     )
                 }
                 item {
@@ -151,10 +151,12 @@ private fun CarteFournee(f: Fournee, onAnnuler: () -> Unit) {
     var ouvert by remember { mutableStateOf(false) }
     val annulee = f.annulee
 
-    val validee =
-        if (f.heure.toLocalDate() == f.date) "Validée à ${f.heure.format(formatHeure)}"
-        else "Validée le ${f.heure.format(formatCourt)} à ${f.heure.format(formatHeure)}"
-    val sousTitre = f.annuleeA?.let { "$validee · annulée à ${it.format(formatHeure)}" } ?: validee
+    val sousTitre = remember(f.heure, f.date, f.annuleeA) {
+        val validee =
+            if (f.heure.toLocalDate() == f.date) "Validée à ${f.heure.format(formatHeure)}"
+            else "Validée le ${f.heure.format(formatCourt)} à ${f.heure.format(formatHeure)}"
+        f.annuleeA?.let { "$validee · annulée à ${it.format(formatHeure)}" } ?: validee
+    }
 
     DonakaCard(containerColor = if (annulee) SurfaceMoyenne.copy(alpha = 0.6f) else SurfaceBlanche) {
         // En-tête

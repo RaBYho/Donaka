@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,8 +35,8 @@ fun InventaireTab(
     onModifier: (Ingredient) -> Unit,
     onSupprimer: (Ingredient) -> Unit
 ) {
-    val liste = etat.ingredientsAffiches
-    val critiques = etat.critiques
+    val liste = remember(etat.ingredients, etat.recherche, etat.filtre) { etat.ingredientsAffiches }
+    val critiques = remember(etat.ingredients) { etat.critiques }
 
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
@@ -108,8 +109,9 @@ fun InventaireTab(
                     }
                 } else {
                     items(liste, key = { it.id }) { i ->
+                        val reserve = remember(i.id, i.quantite, etat.fournees) { etat.reserveJours(i) }
                         StockCard(
-                            i = i, reserve = etat.reserveJours(i),
+                            i = i, reserve = reserve,
                             onCommander = { onCommander(i) }, onAjuster = { onAjuster(i) },
                             onModifier = { onModifier(i) }, onSupprimer = { onSupprimer(i) }
                         )
@@ -187,7 +189,7 @@ private fun StockCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Storefront, null, tint = TexteGris, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text(infos.joinToString(" • "), fontSize = 12.sp, color = TexteGris)
+                        Text(infos.joinToString("   "), fontSize = 12.sp, color = TexteGris)
                     }
                 }
             }

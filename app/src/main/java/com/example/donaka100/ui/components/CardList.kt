@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.example.donaka100.ui.theme.*
 
@@ -40,7 +41,7 @@ fun <T> DonakaCardList(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             userScrollEnabled = false
         ) {
-            items(count = 4) { DonakaCard(isLoading = true) {} }
+            items(count = 4, key = { index -> "skeleton-$index" }) { DonakaCard(isLoading = true) {} }
         }
 
         elements.isEmpty() -> DonakaEmptyState(
@@ -60,7 +61,10 @@ fun <T> DonakaCardList(
                 DonakaCard(
                     onClick = onItemClick?.let { clic -> { clic(element) } }
                 ) {
-                    Row(verticalAlignment = Alignment.Top) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = 0.99f },
+                        verticalAlignment = Alignment.Top
+                    ) {
                         Column(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(8.dp)

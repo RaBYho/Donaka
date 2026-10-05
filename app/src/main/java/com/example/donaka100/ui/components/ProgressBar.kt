@@ -1,5 +1,7 @@
 package com.example.donaka100.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -10,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -22,24 +25,36 @@ fun couleurSelonNiveau(progression: Float): Color = when {
     else -> Vert
 }
 
+/**
+ * Barre de progression Donaka avec animation douce (FastOutSlowInEasing) et transition de couleur.
+ */
 @Composable
 fun DonakaProgressBar(
-    progression: Float,                       // entre 0f et 1f
+    progression: Float, // entre 0f et 1f
     modifier: Modifier = Modifier,
     titre: String? = null,
     valeurTexte: String? = null,
     couleur: Color = couleurSelonNiveau(progression)
 ) {
+    // Animation douce de la progression de 0 à la valeur finale
     val animee by animateFloatAsState(
         targetValue = progression.coerceIn(0f, 1f),
-        animationSpec = tween(600),
-        label = "progression"
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "progressionDonaka"
     )
-    Column(modifier.fillMaxWidth()) {
+
+    // Smooth color change
+    val couleurAnimee by animateColorAsState(
+        targetValue = couleur,
+        animationSpec = tween(durationMillis = 400),
+        label = "couleurDonaka"
+    )
+
+    Column(modifier.fillMaxWidth().graphicsLayer { alpha = 0.99f }) {
         if (titre != null || valeurTexte != null) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(titre.orEmpty(), fontSize = 12.sp, color = TexteGris)
-                Text(valeurTexte.orEmpty(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = couleur)
+                Text(valeurTexte.orEmpty(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = couleurAnimee)
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -49,7 +64,7 @@ fun DonakaProgressBar(
                 .fillMaxWidth()
                 .height(8.dp)
                 .clip(RoundedCornerShape(50)),
-            color = couleur,
+            color = couleurAnimee,
             trackColor = SurfaceMoyenne
         )
     }
@@ -62,7 +77,8 @@ fun DonakaLoadingBar(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(4.dp)
-            .clip(RoundedCornerShape(50)),
+            .clip(RoundedCornerShape(50))
+            .graphicsLayer { alpha = 0.99f },
         color = Primary,
         trackColor = SurfaceMoyenne
     )

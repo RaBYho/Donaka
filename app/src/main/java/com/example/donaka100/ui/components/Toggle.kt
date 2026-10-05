@@ -1,5 +1,9 @@
 package com.example.donaka100.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -7,10 +11,12 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,7 +56,7 @@ fun DonakaSwitchRow(
         Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
-            onCheckedChange = null,   // c'est la ligne entière qui gère le clic
+            onCheckedChange = null,
             enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
@@ -63,7 +69,7 @@ fun DonakaSwitchRow(
     }
 }
 
-/** Sélecteur segmenté générique : Jour / Semaine / Mois, Entrées / Sorties... */
+/** Sélecteur segmenté générique animé de manière fluide */
 @Composable
 fun <T> DonakaSegmentedToggle(
     options: List<T>,
@@ -81,18 +87,41 @@ fun <T> DonakaSegmentedToggle(
     ) {
         options.forEach { option ->
             val actif = option == selected
+
+            val textColor by animateColorAsState(
+                targetValue = if (actif) Primary else TexteGris,
+                animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
+                label = "segmentedTextColor"
+            )
+
+            val scale by animateFloatAsState(
+                targetValue = if (actif) 1.0f else 0.98f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                label = "segmentedScale"
+            )
+
+            val bgColor by animateColorAsState(
+                targetValue = if (actif) SurfaceBlanche else Color.Transparent,
+                animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
+                label = "segmentedBgColor"
+            )
+
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 40.dp)
                     .clip(RoundedCornerShape(9.dp))
-                    .background(if (actif) SurfaceBlanche else Color.Transparent)
+                    .background(bgColor)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .selectable(selected = actif, role = Role.Tab, onClick = { onSelect(option) }),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = label(option),
-                    color = if (actif) Primary else TexteGris,
+                    color = textColor,
                     fontWeight = if (actif) FontWeight.SemiBold else FontWeight.Normal,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,

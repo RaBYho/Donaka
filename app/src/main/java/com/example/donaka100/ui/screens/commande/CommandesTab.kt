@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +43,8 @@ fun CommandesTab(
     onRattacher: (Commande) -> Unit,
     onAjouterDemain: (String) -> Unit
 ) {
+    val livrees = remember(etat.commandes) { etat.livrees }
+
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(16.dp),
@@ -66,14 +69,14 @@ fun CommandesTab(
 
             item {
                 Text(
-                    "Livraisons terminées (${etat.livrees.size})",
+                    "Livraisons terminées (${livrees.size})",
                     fontWeight = FontWeight.SemiBold, color = TexteFonce
                 )
             }
-            if (etat.livrees.isEmpty()) {
+            if (livrees.isEmpty()) {
                 item { Text("Aucune livraison terminée pour l'instant", fontSize = 13.sp, color = TexteGris) }
             } else {
-                items(etat.livrees, key = { it.id }) { c ->
+                items(livrees, key = { it.id }) { c ->
                     CarteLivree(
                         c = c,
                         demain = c.clientId?.let { etat.commandeDemainDe(it) },
@@ -94,9 +97,11 @@ fun CommandesTab(
 
 @Composable
 private fun LivraisonsBanner(etat: CommandeUiState) {
-    val livrees = etat.livrees.size
-    val restantes = etat.aLivrer.size
-    val prevues = livrees + restantes
+    val livreesCount = remember(etat.commandes) { etat.livrees.size }
+    val restantesCount = remember(etat.commandes) { etat.aLivrer.size }
+    val valeurLivree = remember(etat.commandes) { etat.valeurLivreeAujourdhui }
+    val totalEncaisse = remember(etat.encaissements) { etat.totalEncaisseAujourdhui }
+    val prevues = livreesCount + restantesCount
 
     DonakaCard(isLoading = etat.isLoading) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -105,14 +110,14 @@ private fun LivraisonsBanner(etat: CommandeUiState) {
             Text("Livraisons aujourd'hui", fontWeight = FontWeight.Bold, color = TexteFonce)
         }
         DonakaProgressBar(
-            progression = if (prevues == 0) 0f else livrees.toFloat() / prevues,
-            titre = "$livrees ${pluriel(livrees, "livrée")} sur $prevues",
-            valeurTexte = "$restantes ${pluriel(restantes, "restante")}",
+            progression = if (prevues == 0) 0f else livreesCount.toFloat() / prevues,
+            titre = "$livreesCount ${pluriel(livreesCount, "livrée")} sur $prevues",
+            valeurTexte = "$restantesCount ${pluriel(restantesCount, "restante")}",
             couleur = Vert
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Stat("Valeur livrée", etat.valeurLivreeAujourdhui, TexteFonce, Modifier.weight(1f))
-            Stat("Encaissé", etat.totalEncaisseAujourdhui, Vert, Modifier.weight(1f))
+            Stat("Valeur livrée", valeurLivree, TexteFonce, Modifier.weight(1f))
+            Stat("Encaissé", totalEncaisse, Vert, Modifier.weight(1f))
         }
     }
 }
@@ -134,8 +139,8 @@ private fun CarteALivrer(
     onModifier: (Commande) -> Unit,
     onSupprimer: (Commande) -> Unit
 ) {
-    val liste = etat.aLivrer
-    val auj = LocalDate.now()
+    val liste = remember(etat.commandes) { etat.aLivrer }
+    val auj = remember { LocalDate.now() }
 
     DonakaCard {
         Row(

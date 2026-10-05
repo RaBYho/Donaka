@@ -1,11 +1,19 @@
 package com.example.donaka100.ui.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -19,9 +27,26 @@ fun DonakaCard(
     containerColor: Color = SurfaceBlanche,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Animation tactile GPU ultra-fluide au press
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && onClick != null && !isLoading) 0.985f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessHigh),
+        label = "cardPressScale"
+    )
+
     val forme = RoundedCornerShape(16.dp)
     val couleurs = CardDefaults.cardColors(containerColor = containerColor)
     val elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+
+    val cardModifier = modifier
+        .fillMaxWidth()
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
 
     val interieur: @Composable ColumnScope.() -> Unit = {
         Column(
@@ -41,7 +66,8 @@ fun DonakaCard(
     if (onClick != null && !isLoading) {
         Card(
             onClick = onClick,
-            modifier = modifier.fillMaxWidth(),
+            interactionSource = interactionSource,
+            modifier = cardModifier,
             shape = forme,
             colors = couleurs,
             elevation = elevation,
@@ -49,7 +75,7 @@ fun DonakaCard(
         )
     } else {
         Card(
-            modifier = modifier.fillMaxWidth(),
+            modifier = cardModifier,
             shape = forme,
             colors = couleurs,
             elevation = elevation,
