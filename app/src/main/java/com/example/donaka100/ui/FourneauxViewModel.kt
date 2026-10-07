@@ -5,14 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.donaka100.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -59,6 +59,22 @@ data class SyntheseMois(
     val unites: Int = 0,
     val moyenneParJour: Int = 0,
     val farineKg: Double = 0.0
+)
+
+data class FiltresFourneauxUi(
+    val onglet: OngletFourneaux = OngletFourneaux.A_PREPARER,
+    val rechercheProduit: String = "",
+    val categorieFiltre: String? = null,
+    val tri: TriProduit = TriProduit.NOM,
+    val rechercheFournee: String = "",
+    val periode: PeriodeFournee = PeriodeFournee.TOUT
+)
+
+private data class DonneesFourneaux(
+    val produits: List<Produit>,
+    val ingredients: List<Ingredient>,
+    val commandes: List<Commande>,
+    val fournees: List<Fournee>
 )
 
 private val fmtLong = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", Locale.FRENCH)
@@ -191,52 +207,82 @@ class FourneauxViewModel(
     private val repository: FourneauxRepository = RoomFourneauxRepository()
 ) : ViewModel() {
 
-    private val _etat = MutableStateFlow(FourneauxUiState())
-    val etat: StateFlow<FourneauxUiState> = _etat.asStateFlow()
+    private val _filtres = MutableStateFlow(FiltresFourneauxUi())
+    private val _relance = MutableStateFlow(0)
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
-    init { charger() }
-
-    private suspend fun rafraichir() = withContext(Dispatchers.IO) {
-        coroutineScope {
-            val produitsDef = async { repository.getProduits() }
-            val ingredientsDef = async { repository.getIngredients() }
-            val commandesDef = async { repository.getCommandes() }
-            val fourneesDef = async { repository.getFournees() }
-
-            val produits = produitsDef.await()
-            val ingredients = ingredientsDef.await()
-            val commandes = commandesDef.await()
-            val fournees = fourneesDef.await()
-
-            _etat.update {
-                it.copy(produits = produits, ingredients = ingredients, commandes = commandes, fournees = fournees)
-            }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val donneesFourneauxFlow = _relance.flatMapLatest {
+        combine(
+            repository.observeProduits(),
+            repository.observeIngredients(),
+            repository.observeCommandes(),
+            repository.observeFournees()
+        ) { produits, ingredients, commandes, fournees ->
+            DonneesFourneaux(produits, ingredients, commandes, fournees)
         }
     }
+
+    val etat: StateFlow<FourneauxUiState> = combine(
+        donneesFourneauxFlow,
+        _filtres
+    ) { d, f ->
+        FourneauxUiState(
+            isLoading = false,
+            erreur = null,
+            produits = d.produits,
+            ingredients = d.ingredients,
+            commandes = d.commandes,
+            fournees = d.fournees,
+            onglet = f.onglet,
+            rechercheProduit = f.rechercheProduit,
+            categorieFiltre = f.categorieFiltre,
+            tri = f.tri,
+            rechercheFournee = f.rechercheFournee,
+            periode = f.periode
+        )
+    }.catch { e ->
+        if (e is CancellationException) throw e
+        emit(FourneauxUiState(isLoading = false, erreur = "Impossible de charger les données."))
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = FourneauxUiState(isLoading = true)
+    )
 
     fun charger() {
+        _relance.update { it + 1 }
+    }
+
+    fun actualiser() {
         viewModelScope.launch {
-            _etat.update { it.copy(isLoading = true, erreur = null) }
-            try {
-                rafraichir()
-                _etat.update { it.copy(isLoading = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _etat.update { it.copy(isLoading = false, erreur = "Impossible de charger les données.") }
+            _isRefreshing.value = true
+            val debut = System.currentTimeMillis()
+            _relance.update { it + 1 }
+            verifierSauvegardePointExtension()
+            val duree = System.currentTimeMillis() - debut
+            if (duree < 500) {
+                delay(500 - duree)
             }
+            _isRefreshing.value = false
         }
     }
 
-    fun onOnglet(o: OngletFourneaux) = _etat.update { it.copy(onglet = o) }
-    fun onRechercheProduit(t: String) = _etat.update { it.copy(rechercheProduit = t) }
-    fun onCategorie(c: String?) = _etat.update { it.copy(categorieFiltre = c) }
-    fun onTri(t: TriProduit) = _etat.update { it.copy(tri = t) }
-    fun onRechercheFournee(t: String) = _etat.update { it.copy(rechercheFournee = t) }
-    fun onPeriode(p: PeriodeFournee) = _etat.update { it.copy(periode = p) }
+    private suspend fun verifierSauvegardePointExtension() {
+        // Point d'extension pour vérification future de la sauvegarde
+    }
+
+    fun onOnglet(o: OngletFourneaux) = _filtres.update { it.copy(onglet = o) }
+    fun onRechercheProduit(t: String) = _filtres.update { it.copy(rechercheProduit = t) }
+    fun onCategorie(c: String?) = _filtres.update { it.copy(categorieFiltre = c) }
+    fun onTri(t: TriProduit) = _filtres.update { it.copy(tri = t) }
+    fun onRechercheFournee(t: String) = _filtres.update { it.copy(rechercheFournee = t) }
+    fun onPeriode(p: PeriodeFournee) = _filtres.update { it.copy(periode = p) }
 
     private fun messageIngredients(nb: Int) =
         if (nb == 0) "" else " · $nb ingrédient${if (nb > 1) "s" else ""} ajouté${if (nb > 1) "s" else ""} au stock"
@@ -257,12 +303,12 @@ class FourneauxViewModel(
     }
 
     fun lancer(lignes: List<LigneDemande>) {
-        val manque = _etat.value.besoinsPour(lignes.associate { it.produitId to it.quantite })
+        val manque = etat.value.besoinsPour(lignes.associate { it.produitId to it.quantite })
             .any { !it.suffisant }
         val message =
             if (manque) "Production validée · stock insuffisant, ingrédients ramenés à 0"
             else "Production validée · ingrédients déduits du stock"
-        action(message) { repository.lancerProduction(_etat.value.demain, lignes) }
+        action(message) { repository.lancerProduction(etat.value.demain, lignes) }
     }
 
     fun annulerFournee(f: Fournee) =
@@ -274,24 +320,12 @@ class FourneauxViewModel(
         viewModelScope.launch {
             try {
                 val message = withContext(Dispatchers.IO) { bloc() }
-                rafraichir()
                 _messages.send(message)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _messages.send("Échec de l'opération. Réessaie.")
+                _messages.send(e.message ?: "Échec de l'opération. Réessaie.")
             }
-        }
-    }
-
-    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton */
-    fun actualiser() {
-        viewModelScope.launch {
-            try {
-                rafraichir()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) { }
         }
     }
 }

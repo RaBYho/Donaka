@@ -1,17 +1,29 @@
 package com.example.donaka100.data
 
 import com.example.donaka100.DonakaApplication
+import com.example.donaka100.data.local.DonakaDatabase
+import com.example.donaka100.data.local.entity.DepenseEntity
+import com.example.donaka100.data.local.entity.FournisseurEntity
+import com.example.donaka100.data.local.entity.IngredientEntity
+import com.example.donaka100.data.local.entity.MouvementStockEntity
+import com.example.donaka100.data.local.entity.PaiementEntity
+import com.example.donaka100.data.local.model.ClientWithCommandesAndPaiements
+import com.example.donaka100.data.local.model.CommandeWithDetails
+import com.example.donaka100.data.local.model.ProduitWithRecette
 import com.example.donaka100.data.local.toDomain
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.ZoneOffset
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 interface BoardRepository {
+    fun observeBoard(): Flow<BoardData>
     suspend fun getBoard(): BoardData
     suspend fun ajouterVente(v: NouvelleVenteComptoir)
     suspend fun ajouterDepense(d: NouvelleDepense)
@@ -19,9 +31,26 @@ interface BoardRepository {
     suspend fun acheter(a: NouvelAchat)
 }
 
-class RoomBoardRepository : BoardRepository {
+private data class FluxFinanciers(
+    val paiements: List<PaiementEntity>,
+    val depenses: List<DepenseEntity>,
+    val mouvements: List<MouvementStockEntity>
+)
 
-    private val db get() = DonakaApplication.instance.database
+private data class FluxEntites(
+    val commandes: List<CommandeWithDetails>,
+    val clients: List<ClientWithCommandesAndPaiements>,
+    val ingredients: List<IngredientEntity>,
+    val produits: List<ProduitWithRecette>,
+    val fournisseurs: List<FournisseurEntity>
+)
+
+class RoomBoardRepository(
+    private val database: DonakaDatabase = DonakaApplication.instance.database,
+    private val reglagesRepository: ReglagesRepository = DonakaApplication.instance.reglagesRepository
+) : BoardRepository {
+
+    private val db get() = database
     private val commandeDao get() = db.commandeDao()
     private val clientDao get() = db.clientDao()
     private val stockDao get() = db.stockDao()
@@ -29,36 +58,65 @@ class RoomBoardRepository : BoardRepository {
     private val paiementDao get() = db.paiementDao()
     private val fournisseurDao get() = db.fournisseurDao()
 
-    private val clientsRepo = RoomCommandeRepository()
-    private val stockRepo = RoomStockRepository()
+    private val clientsRepo get() = RoomCommandeRepository(database)
+    private val stockRepo get() = RoomStockRepository(database)
     private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
 
+    override fun observeBoard(): Flow<BoardData> {
+        val fluxFinanciers = combine(
+            paiementDao.getAllPaiements(),
+            depenseDao.getAllDepenses(),
+            stockDao.getAllMouvementsStock()
+        ) { paiements, depenses, mouvements ->
+            FluxFinanciers(paiements, depenses, mouvements)
+        }
+
+        val fluxEntites = combine(
+            commandeDao.getAllCommandesWithDetails(),
+            clientDao.getAllClientsWithDetails(),
+            stockDao.getAllIngredients(),
+            stockDao.getAllProduitsWithRecette(),
+            fournisseurDao.getAllFournisseurs()
+        ) { commandes, clients, ingredients, produits, fournisseurs ->
+            FluxEntites(commandes, clients, ingredients, produits, fournisseurs)
+        }
+
+        return combine(fluxFinanciers, fluxEntites, reglagesRepository.observeReglages()) { fin, ent, reglages ->
+            calculerBoard(fin, ent, reglages)
+        }
+    }
+
     override suspend fun getBoard(): BoardData {
+        return observeBoard().first()
+    }
+
+    private fun calculerBoard(fin: FluxFinanciers, ent: FluxEntites, reglages: Reglages): BoardData {
         val auj = LocalDate.now()
-        val debutAuj = auj.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
-        val finAuj = auj.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() - 1
+        val zone = ZoneId.systemDefault()
+        val debutAuj = auj.atStartOfDay(zone).toInstant().toEpochMilli()
+        val finAuj = auj.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
 
         val hier = auj.minusDays(1)
-        val debutHier = hier.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
-        val finHier = auj.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() - 1
+        val debutHier = hier.atStartOfDay(zone).toInstant().toEpochMilli()
+        val finHier = auj.atStartOfDay(zone).toInstant().toEpochMilli() - 1
 
-        val paiementsAuj = paiementDao.getAllPaiements().first()
+        val paiementsAuj = fin.paiements
             .filter { !it.annule && it.type != TypeMouvement.A_CREDIT && it.dateHeure in debutAuj..finAuj }
         val encaisse = paiementsAuj.sumOf { it.montant }
 
-        val depensesAuj = depenseDao.getAllDepenses().first()
+        val depensesAuj = fin.depenses
             .filter { !it.annule && it.dateHeure in debutAuj..finAuj }
-        val achatsMouvementsAuj = stockDao.getAllMouvementsStock().first()
+        val achatsMouvementsAuj = fin.mouvements
             .filter { it.estAchat && !it.annule && (it.montant ?: 0L) > 0L && it.dateHeure in debutAuj..finAuj }
 
         val sorties = depensesAuj.sumOf { it.montant } + achatsMouvementsAuj.sumOf { it.montant ?: 0L }
         val tresorerie = encaisse - sorties
 
-        val paiementsHier = paiementDao.getAllPaiements().first()
+        val paiementsHier = fin.paiements
             .filter { !it.annule && it.type != TypeMouvement.A_CREDIT && it.dateHeure in debutHier..finHier }
-        val depensesHier = depenseDao.getAllDepenses().first()
+        val depensesHier = fin.depenses
             .filter { !it.annule && it.dateHeure in debutHier..finHier }
-        val achatsHier = stockDao.getAllMouvementsStock().first()
+        val achatsHier = fin.mouvements
             .filter { it.estAchat && !it.annule && (it.montant ?: 0L) > 0L && it.dateHeure in debutHier..finHier }
 
         val veilleSorties = depensesHier.sumOf { it.montant } + achatsHier.sumOf { it.montant ?: 0L }
@@ -67,7 +125,7 @@ class RoomBoardRepository : BoardRepository {
         val variation = if (veilleTresorerie == 0L) null
         else ((tresorerie - veilleTresorerie) * 100.0 / abs(veilleTresorerie)).roundToInt()
 
-        val commandesDetails = commandeDao.getAllCommandesWithDetails().first()
+        val commandesDetails = ent.commandes
         val livre = commandesDetails
             .filter { !it.commande.archive && it.commande.livreeA != null && it.commande.date == auj.toEpochDay() }
             .sumOf { it.total }
@@ -91,26 +149,26 @@ class RoomBoardRepository : BoardRepository {
         val heure = demainCommandes.map { it.commande.heureSouhaitee }.filter { it.isNotBlank() }.minOrNull()
             ?.replace(':', 'h').orEmpty()
 
-        val clientsWithDetails = clientDao.getAllClientsWithDetails().first().map { it.toDomain() }
+        val clientsWithDetails = ent.clients.map { it.toDomain() }
         val debiteurs = clientsWithDetails.filter { it.resteDu > 0 }
 
         val operations = buildList<Pair<Long, Operation>> {
             paiementsAuj.forEach {
-                val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(it.dateHeure), ZoneOffset.UTC)
+                val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(it.dateHeure), zone)
                 add(it.dateHeure to Operation(
                     "e-${it.id}", it.clientNom, dt.format(hhmm),
                     it.mode?.libelle.orEmpty(), it.montant
                 ))
             }
             depensesAuj.forEach {
-                val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(it.dateHeure), ZoneOffset.UTC)
+                val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(it.dateHeure), zone)
                 add(it.dateHeure to Operation(
                     "d-${it.id}", it.categorie, dt.format(hhmm),
                     it.note.ifBlank { it.mode.libelle }, -it.montant
                 ))
             }
             achatsMouvementsAuj.forEach {
-                val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(it.dateHeure), ZoneOffset.UTC)
+                val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(it.dateHeure), zone)
                 add(it.dateHeure to Operation(
                     "a-${it.id}", "Achat : ${it.ingredientNom}", dt.format(hhmm),
                     it.fournisseur.ifBlank { "Stock" }, -(it.montant ?: 0L)
@@ -118,19 +176,19 @@ class RoomBoardRepository : BoardRepository {
             }
         }.sortedByDescending { it.first }.take(5).map { it.second }
 
-        val fichesFournisseurs = fournisseurDao.getAllFournisseurs().first().map { it.nom }
-        val ingredientsFournisseurs = stockDao.getAllIngredients().first().map { it.fournisseur }
+        val fichesFournisseurs = ent.fournisseurs.map { it.nom }
+        val ingredientsFournisseurs = ent.ingredients.map { it.fournisseur }
         val fournisseurs = (fichesFournisseurs + ingredientsFournisseurs)
             .filter { it.isNotBlank() }
             .distinctBy { it.cleNom() }
             .sortedBy { it.lowercase() }
 
-        val ingredientsDomain = stockDao.getAllIngredients().first().map { it.toDomain() }
-        val produitsDomain = stockDao.getAllProduitsWithRecette().first().map { it.toDomain() }.filterNot { it.archive }
-        val depensesEntities = depenseDao.getAllDepenses().first().filter { !it.annule }
+        val ingredientsDomain = ent.ingredients.map { it.toDomain() }
+        val produitsDomain = ent.produits.map { it.toDomain() }.filterNot { it.archive }
+        val depensesEntities = fin.depenses.filter { !it.annule }
 
         return BoardData(
-            nomUtilisateur = "Chef Baker",
+            nomUtilisateur = reglages.nomChef,
             fournilOuvert = true,
             chiffreAffaires = livre + comptoir,
             fournisseurs = fournisseurs,
@@ -151,12 +209,12 @@ class RoomBoardRepository : BoardRepository {
     }
 
     override suspend fun ajouterVente(v: NouvelleVenteComptoir) {
-        val commandeRepo = RoomCommandeRepository()
+        val commandeRepo = RoomCommandeRepository(database)
         commandeRepo.venteNonPrevue(v.lignes, v.mode)
     }
 
     override suspend fun ajouterDepense(d: NouvelleDepense) {
-        val depenseRepo = RoomDepenseRepository()
+        val depenseRepo = RoomDepenseRepository(database)
         depenseRepo.creer(d)
     }
 

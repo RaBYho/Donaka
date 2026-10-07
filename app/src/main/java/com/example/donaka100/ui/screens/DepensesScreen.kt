@@ -87,17 +87,21 @@ fun DepensesScreen(
     vm: DepenseViewModel = viewModel()
 ) {
     val etat by vm.etat.collectAsStateWithLifecycle()
+    val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialogue by remember { mutableStateOf<DialogueDepense?>(null) }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
-    LaunchedEffect(Unit) { vm.actualiser() }
     val mois = remember {
         val m = LocalDate.now()
         m.month.getDisplayName(TextStyle.FULL, Locale.FRENCH).replaceFirstChar { it.uppercase() } + " ${m.year}"
     }
 
-    Box(Modifier.fillMaxSize()) {
+    DonakaPullRefresh(
+        isRefreshing = isRefreshing,
+        onRefresh = vm::actualiser
+    ) {
+        Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
                 Text("Gestion des Dépenses", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TexteFonce)
@@ -124,6 +128,7 @@ fun DepensesScreen(
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+}
 
     when (val d = dialogue) {
         null -> Unit

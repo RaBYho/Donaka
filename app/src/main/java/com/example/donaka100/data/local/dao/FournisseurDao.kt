@@ -14,6 +14,9 @@ interface FournisseurDao {
     @Query("SELECT * FROM fournisseurs WHERE archive = 0 ORDER BY nom ASC")
     fun getAllFournisseurs(): Flow<List<FournisseurEntity>>
 
+    @Query("SELECT * FROM fournisseurs WHERE archive = 0 ORDER BY nom ASC")
+    suspend fun getAllFournisseursSync(): List<FournisseurEntity>
+
     @Query("SELECT * FROM fournisseurs WHERE id = :id AND archive = 0")
     fun getFournisseurById(id: String): Flow<FournisseurEntity?>
 

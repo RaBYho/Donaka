@@ -1,17 +1,28 @@
 package com.example.donaka100.data
 
+import androidx.room.withTransaction
 import com.example.donaka100.DonakaApplication
+import com.example.donaka100.data.local.DonakaDatabase
 import com.example.donaka100.data.local.entity.AchatEntity
 import com.example.donaka100.data.local.entity.FournisseurEntity
 import com.example.donaka100.data.local.entity.IngredientEntity
 import com.example.donaka100.data.local.entity.MouvementStockEntity
 import com.example.donaka100.data.local.entity.PrixIngredientEntity
 import com.example.donaka100.data.local.toDomain
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.roundToLong
 
 interface StockRepository {
+    fun observeIngredients(): Flow<List<Ingredient>>
+    fun observeProduits(): Flow<List<Produit>>
+    fun observeFournees(): Flow<List<Fournee>>
+    fun observeMouvements(): Flow<List<MouvementStock>>
+    fun observeFiches(): Flow<List<FicheFournisseur>>
+
     suspend fun getIngredients(): List<Ingredient>
     suspend fun getProduits(): List<Produit>
     suspend fun getFournees(): List<Fournee>
@@ -32,32 +43,54 @@ interface StockRepository {
     suspend fun supprimerFournisseur(nom: String)
 }
 
-class RoomStockRepository : StockRepository {
+class RoomStockRepository(
+    private val database: DonakaDatabase = DonakaApplication.instance.database
+) : StockRepository {
 
-    private val db get() = DonakaApplication.instance.database
+    private val db get() = database
     private val stockDao get() = db.stockDao()
     private val fournisseurDao get() = db.fournisseurDao()
     private val achatDao get() = db.achatDao()
     private val fourneeDao get() = db.fourneeDao()
 
+    override fun observeIngredients(): Flow<List<Ingredient>> {
+        return stockDao.getAllIngredients().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeProduits(): Flow<List<Produit>> {
+        return stockDao.getAllProduitsWithRecette().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeFournees(): Flow<List<Fournee>> {
+        return fourneeDao.getAllFourneesWithDetails().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeMouvements(): Flow<List<MouvementStock>> {
+        return stockDao.getAllMouvementsStock().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeFiches(): Flow<List<FicheFournisseur>> {
+        return fournisseurDao.getAllFournisseurs().map { list -> list.map { it.toDomain() } }
+    }
+
     override suspend fun getIngredients(): List<Ingredient> {
-        return stockDao.getAllIngredients().first().map { it.toDomain() }
+        return observeIngredients().first()
     }
 
     override suspend fun getProduits(): List<Produit> {
-        return stockDao.getAllProduitsWithRecette().first().map { it.toDomain() }
+        return observeProduits().first()
     }
 
     override suspend fun getFournees(): List<Fournee> {
-        return fourneeDao.getAllFourneesWithDetails().first().map { it.toDomain() }
+        return observeFournees().first()
     }
 
     override suspend fun getMouvements(): List<MouvementStock> {
-        return stockDao.getAllMouvementsStock().first().map { it.toDomain() }
+        return observeMouvements().first()
     }
 
-    override suspend fun creerIngredient(i: NouvelIngredient) {
-        val tous = getIngredients()
+    override suspend fun creerIngredient(i: NouvelIngredient) = db.withTransaction {
+        val tous = stockDao.getAllIngredientsSync()
         require(tous.none { it.nom.cleNom() == i.nom.cleNom() }) { "Ingrédient déjà existant" }
 
         val id = UUID.randomUUID().toString()
@@ -97,10 +130,10 @@ class RoomStockRepository : StockRepository {
         }
     }
 
-    override suspend fun modifierIngredient(id: String, i: NouvelIngredient) {
-        val ingEntity = stockDao.getIngredientByIdSync(id) ?: return
+    override suspend fun modifierIngredient(id: String, i: NouvelIngredient) = db.withTransaction {
+        val ingEntity = stockDao.getIngredientByIdSync(id) ?: return@withTransaction
         val nomClean = i.nom.nettoyerNom()
-        val tous = getIngredients()
+        val tous = stockDao.getAllIngredientsSync()
         require(tous.none { it.id != id && it.nom.cleNom() == nomClean.cleNom() }) { "Nom déjà pris" }
 
         val updated = ingEntity.copy(
@@ -134,14 +167,20 @@ class RoomStockRepository : StockRepository {
         }
     }
 
-    override suspend fun supprimerIngredient(id: String) {
+    override suspend fun supprimerIngredient(id: String) = db.withTransaction {
+        val produits = stockDao.getAllProduitsWithRecetteSync().map { it.toDomain() }
+        val utilises = produits.filter { !it.archive && it.recette.any { r -> r.ingredientId == id } }
+        if (utilises.isNotEmpty()) {
+            val noms = utilises.joinToString(", ") { "« ${it.nom} »" }
+            throw IllegalStateException("Impossible de supprimer cet ingrédient : il est utilisé dans la recette de $noms.")
+        }
         stockDao.softDeleteIngredient(id)
     }
 
-    override suspend fun ajuster(id: String, nouvelleQuantite: Double, motif: String) {
-        val ingEntity = stockDao.getIngredientByIdSync(id) ?: return
+    override suspend fun ajuster(id: String, nouvelleQuantite: Double, motif: String) = db.withTransaction {
+        val ingEntity = stockDao.getIngredientByIdSync(id) ?: return@withTransaction
         val ecart = nouvelleQuantite - ingEntity.quantite
-        if (abs(ecart) < 0.0005) return
+        if (abs(ecart) < 0.0005) return@withTransaction
 
         stockDao.ajusterQuantiteIngredient(id, ecart)
 
@@ -163,12 +202,12 @@ class RoomStockRepository : StockRepository {
         stockDao.insertMouvementStock(mouvement)
     }
 
-    override suspend fun acheter(a: NouvelAchat): Boolean {
+    override suspend fun acheter(a: NouvelAchat): Boolean = db.withTransaction {
         val cle = a.nom.cleNom()
         val fournisseur = a.fournisseur.nettoyerNom()
         var cree = false
 
-        val tous = stockDao.getAllIngredients().first()
+        val tous = stockDao.getAllIngredientsSync()
         var ingEntity = tous.firstOrNull { it.nom.cleNom() == cle }
 
         if (ingEntity == null) {
@@ -233,7 +272,7 @@ class RoomStockRepository : StockRepository {
         achatDao.insertAchat(achatEntity)
 
         if (a.montant != null && a.montant > 0 && a.quantite > 0) {
-            val prixParUnite = a.montant / a.quantite.toLong().coerceAtLeast(1L)
+            val prixParUnite = (a.montant.toDouble() / a.quantite).roundToLong()
             val prixEntity = PrixIngredientEntity(
                 id = UUID.randomUUID().toString(),
                 ingredientId = id,
@@ -244,12 +283,12 @@ class RoomStockRepository : StockRepository {
             stockDao.insertPrixIngredient(prixEntity)
         }
 
-        return cree
+        cree
     }
 
-    override suspend fun modifierAchat(mouvementId: String, m: ModificationAchat) {
-        val mouvement = stockDao.getAllMouvementsStock().first().firstOrNull { it.id == mouvementId } ?: return
-        if (!mouvement.estAchat || mouvement.annule) return
+    override suspend fun modifierAchat(mouvementId: String, m: ModificationAchat) = db.withTransaction {
+        val mouvement = stockDao.getMouvementStockByIdSync(mouvementId) ?: return@withTransaction
+        if (!mouvement.estAchat || mouvement.annule) return@withTransaction
 
         val updatedMouvement = mouvement.copy(
             montant = m.montant,
@@ -270,11 +309,11 @@ class RoomStockRepository : StockRepository {
         }
     }
 
-    override suspend fun annulerAchat(mouvementId: String) {
-        val mouvement = stockDao.getAllMouvementsStock().first().firstOrNull { it.id == mouvementId } ?: return
-        if (!mouvement.estAchat || mouvement.annule) return
+    override suspend fun annulerAchat(mouvementId: String) = db.withTransaction {
+        val mouvement = stockDao.getMouvementStockByIdSync(mouvementId) ?: return@withTransaction
+        if (!mouvement.estAchat || mouvement.annule) return@withTransaction
 
-        val ingEntity = stockDao.getIngredientByIdSync(mouvement.ingredientId) ?: return
+        val ingEntity = stockDao.getIngredientByIdSync(mouvement.ingredientId) ?: return@withTransaction
 
         stockDao.ajusterQuantiteIngredient(ingEntity.id, -mouvement.quantite)
         stockDao.annulerAchatMouvement(mouvementId)
@@ -299,11 +338,11 @@ class RoomStockRepository : StockRepository {
     }
 
     override suspend fun getFiches(): List<FicheFournisseur> {
-        return fournisseurDao.getAllFournisseurs().first().map { it.toDomain() }
+        return observeFiches().first()
     }
 
-    override suspend fun creerFournisseur(f: NouveauFournisseur) {
-        val tous = getFiches()
+    override suspend fun creerFournisseur(f: NouveauFournisseur) = db.withTransaction {
+        val tous = fournisseurDao.getAllFournisseursSync()
         require(tous.none { it.nom.cleNom() == f.nom.cleNom() }) { "Fiche déjà existante" }
 
         val entity = FournisseurEntity(
@@ -317,7 +356,7 @@ class RoomStockRepository : StockRepository {
         fournisseurDao.insertFournisseur(entity)
     }
 
-    override suspend fun modifierFournisseur(ancienNom: String, f: NouveauFournisseur) {
+    override suspend fun modifierFournisseur(ancienNom: String, f: NouveauFournisseur) = db.withTransaction {
         val nouveauNom = f.nom.nettoyerNom()
 
         val existante = fournisseurDao.getFournisseurByNomSync(ancienNom)
@@ -344,7 +383,7 @@ class RoomStockRepository : StockRepository {
         }
     }
 
-    override suspend fun supprimerFournisseur(nom: String) {
+    override suspend fun supprimerFournisseur(nom: String) = db.withTransaction {
         val f = fournisseurDao.getFournisseurByNomSync(nom)
         if (f != null) {
             fournisseurDao.softDeleteFournisseur(f.id)

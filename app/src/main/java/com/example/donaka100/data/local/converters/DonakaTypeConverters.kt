@@ -10,7 +10,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.ZoneOffset
+import java.time.ZoneId
 
 class DonakaTypeConverters {
 
@@ -27,13 +27,13 @@ class DonakaTypeConverters {
     @TypeConverter
     fun fromEpochMillis(value: Long?): LocalDateTime? {
         return value?.let {
-            LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneOffset.UTC)
+            LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault())
         }
     }
 
     @TypeConverter
     fun toEpochMillis(dateTime: LocalDateTime?): Long? {
-        return dateTime?.toInstant(ZoneOffset.UTC)?.toEpochMilli()
+        return dateTime?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
     }
 
     @TypeConverter

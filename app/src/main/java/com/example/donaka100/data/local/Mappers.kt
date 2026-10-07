@@ -33,7 +33,7 @@ import com.example.donaka100.data.local.model.ProduitWithRecette
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.ZoneOffset
+import java.time.ZoneId
 
 // Ingrédient Mappers
 fun IngredientEntity.toDomain(): Ingredient = Ingredient(
@@ -97,10 +97,10 @@ fun LigneRecette.toEntity(produitId: String, pivotId: String?): LigneRecetteEnti
 fun FourneeWithDetails.toDomain(): Fournee = Fournee(
     id = fournee.id,
     date = LocalDate.ofEpochDay(fournee.date),
-    heure = LocalDateTime.ofInstant(Instant.ofEpochMilli(fournee.heure), ZoneOffset.UTC),
+    heure = LocalDateTime.ofInstant(Instant.ofEpochMilli(fournee.heure), ZoneId.systemDefault()),
     lignes = lignes.map { it.toDomain() },
     consommations = consommations.map { it.toDomain() },
-    annuleeA = fournee.annuleeA?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneOffset.UTC) }
+    annuleeA = fournee.annuleeA?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()) }
 )
 
 fun LigneFourneeEntity.toDomain(): LigneFournee = LigneFournee(
@@ -121,8 +121,8 @@ fun ConsommationEntity.toDomain(): Consommation = Consommation(
 fun Fournee.toEntity(): FourneeEntity = FourneeEntity(
     id = id,
     date = date.toEpochDay(),
-    heure = heure.toInstant(ZoneOffset.UTC).toEpochMilli(),
-    annuleeA = annuleeA?.toInstant(ZoneOffset.UTC)?.toEpochMilli()
+    heure = heure.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+    annuleeA = annuleeA?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
 )
 
 fun LigneFournee.toEntity(fourneeId: String, id: String): LigneFourneeEntity = LigneFourneeEntity(
@@ -149,7 +149,7 @@ fun MouvementStockEntity.toDomain(): MouvementStock = MouvementStock(
     id = id,
     ingredientId = ingredientId,
     ingredientNom = ingredientNom,
-    dateHeure = LocalDateTime.ofInstant(Instant.ofEpochMilli(dateHeure), ZoneOffset.UTC),
+    dateHeure = LocalDateTime.ofInstant(Instant.ofEpochMilli(dateHeure), ZoneId.systemDefault()),
     type = type,
     quantite = quantite,
     motif = motif,
@@ -165,7 +165,7 @@ fun MouvementStock.toEntity(): MouvementStockEntity = MouvementStockEntity(
     id = id,
     ingredientId = ingredientId,
     ingredientNom = ingredientNom,
-    dateHeure = dateHeure.toInstant(ZoneOffset.UTC).toEpochMilli(),
+    dateHeure = dateHeure.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
     type = type,
     quantite = quantite,
     motif = motif,
@@ -211,7 +211,7 @@ fun Client.toEntity(archive: Boolean = false): ClientEntity = ClientEntity(
 // Commande Mappers
 fun CommandeWithDetails.toDomain(): Commande {
     val dateTimeLivree = commande.livreeA?.let {
-        LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneOffset.UTC).toLocalTime()
+        LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()).toLocalTime()
     }
     val dernierPaiementMode = paiements.lastOrNull { !it.annule }?.mode
 
@@ -240,7 +240,7 @@ fun Commande.toEntity(archive: Boolean = false): CommandeEntity {
     val epochDate = date.toEpochDay()
     val epochEcheance = date.plusDays(7).toEpochDay()
     val epochLivreeA = livreeA?.let {
-        date.atTime(it).toInstant(ZoneOffset.UTC).toEpochMilli()
+        date.atTime(it).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
     }
 
     return CommandeEntity(
@@ -270,7 +270,7 @@ fun PaiementEntity.toDomain(): Encaissement = Encaissement(
     id = id,
     numero = numero,
     clientNom = clientNom,
-    dateHeure = LocalDateTime.ofInstant(Instant.ofEpochMilli(dateHeure), ZoneOffset.UTC),
+    dateHeure = LocalDateTime.ofInstant(Instant.ofEpochMilli(dateHeure), ZoneId.systemDefault()),
     mode = mode,
     montant = montant,
     note = note,
@@ -285,7 +285,7 @@ fun Encaissement.toEntity(clientId: String, annule: Boolean = false): PaiementEn
     clientNom = clientNom,
     commandeId = commandeId,
     montant = montant,
-    dateHeure = dateHeure.toInstant(ZoneOffset.UTC).toEpochMilli(),
+    dateHeure = dateHeure.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
     mode = mode,
     type = type,
     note = note,
@@ -316,7 +316,7 @@ fun DepenseEntity.toDomain(): Depense = Depense(
     categorie = categorie,
     montant = montant,
     note = note,
-    dateHeure = LocalDateTime.ofInstant(Instant.ofEpochMilli(dateHeure), ZoneOffset.UTC),
+    dateHeure = LocalDateTime.ofInstant(Instant.ofEpochMilli(dateHeure), ZoneId.systemDefault()),
     mode = mode
 )
 
@@ -325,7 +325,7 @@ fun Depense.toEntity(annule: Boolean = false): DepenseEntity = DepenseEntity(
     categorie = categorie,
     montant = montant,
     note = note,
-    dateHeure = dateHeure.toInstant(ZoneOffset.UTC).toEpochMilli(),
+    dateHeure = dateHeure.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
     mode = mode,
     annule = annule
 )

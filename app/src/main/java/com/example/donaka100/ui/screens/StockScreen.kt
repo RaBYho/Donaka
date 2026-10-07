@@ -59,14 +59,18 @@ private sealed interface DialogueStock {
 @Composable
 fun StockScreen(vm: StockViewModel = viewModel()) {
     val etat by vm.etat.collectAsStateWithLifecycle()
+    val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialogue by remember { mutableStateOf<DialogueStock?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
-    LaunchedEffect(Unit) { vm.actualiser() }
 
-    Box(Modifier.fillMaxSize()) {
+    com.example.donaka100.ui.components.DonakaPullRefresh(
+        isRefreshing = isRefreshing,
+        onRefresh = vm::actualiser
+    ) {
+        Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Column(
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
@@ -156,6 +160,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+}
 
     when (val d = dialogue) {
         null -> Unit
@@ -227,7 +232,7 @@ fun StockScreen(vm: StockViewModel = viewModel()) {
 
         is DialogueStock.AnnulationBloquee -> AlertDialog(
             onDismissRequest = { dialogue = null },
-            containerColor = SurfaceBlanche,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
             title = { Text("Annulation impossible", fontWeight = FontWeight.Bold) },
             text = { Text(d.raison, color = TexteGris) },
             confirmButton = { DonakaButton("Compris", onClick = { dialogue = null }, style = StyleBouton.TEXTE) }

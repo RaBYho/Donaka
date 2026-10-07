@@ -19,6 +19,10 @@ interface CommandeDao {
     fun getAllCommandesWithDetails(): Flow<List<CommandeWithDetails>>
 
     @Transaction
+    @Query("SELECT * FROM commandes WHERE archive = 0 ORDER BY date DESC, heureSouhaitee ASC")
+    suspend fun getAllCommandesWithDetailsSync(): List<CommandeWithDetails>
+
+    @Transaction
     @Query("SELECT * FROM commandes WHERE date = :date AND archive = 0 ORDER BY heureSouhaitee ASC")
     fun getCommandesForDate(date: Long): Flow<List<CommandeWithDetails>>
 
@@ -49,6 +53,9 @@ interface CommandeDao {
 
     @Update
     suspend fun updateCommande(commande: CommandeEntity)
+
+    @Query("DELETE FROM lignes_commande WHERE commandeId = :commandeId")
+    suspend fun deleteLignesForCommande(commandeId: String)
 
     // Soft-delete STRICT (pas de DELETE physique)
     @Query("UPDATE commandes SET archive = 1 WHERE id = :id")

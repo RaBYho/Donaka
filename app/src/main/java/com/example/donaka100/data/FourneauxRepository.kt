@@ -1,6 +1,8 @@
 package com.example.donaka100.data
 
+import androidx.room.withTransaction
 import com.example.donaka100.DonakaApplication
+import com.example.donaka100.data.local.DonakaDatabase
 import com.example.donaka100.data.local.entity.ConsommationEntity
 import com.example.donaka100.data.local.entity.FourneeEntity
 import com.example.donaka100.data.local.entity.IngredientEntity
@@ -10,10 +12,17 @@ import com.example.donaka100.data.local.entity.MouvementStockEntity
 import com.example.donaka100.data.local.entity.ProduitEntity
 import com.example.donaka100.data.local.toDomain
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 import java.util.UUID
 
 interface FourneauxRepository {
+    fun observeProduits(): Flow<List<Produit>>
+    fun observeIngredients(): Flow<List<Ingredient>>
+    fun observeCommandes(): Flow<List<Commande>>
+    fun observeFournees(): Flow<List<Fournee>>
+
     suspend fun getProduits(): List<Produit>
     suspend fun getIngredients(): List<Ingredient>
     suspend fun getCommandes(): List<Commande>
@@ -28,9 +37,11 @@ interface FourneauxRepository {
     suspend fun annulerFournee(id: String)
 }
 
-class RoomFourneauxRepository : FourneauxRepository {
+class RoomFourneauxRepository(
+    private val database: DonakaDatabase = DonakaApplication.instance.database
+) : FourneauxRepository {
 
-    private val db get() = DonakaApplication.instance.database
+    private val db get() = database
     private val stockDao get() = db.stockDao()
     private val fourneeDao get() = db.fourneeDao()
     private val commandeDao get() = db.commandeDao()
@@ -39,7 +50,7 @@ class RoomFourneauxRepository : FourneauxRepository {
 
     private suspend fun trouverOuCreer(nom: String, unite: UniteStock, crees: MutableList<Ingredient>): Ingredient {
         val cle = nom.cleNom()
-        val ingredients = stockDao.getAllIngredients().first()
+        val ingredients = stockDao.getAllIngredientsSync()
         ingredients.firstOrNull { it.nom.cleNom() == cle }?.let { return it.toDomain() }
 
         val id = UUID.randomUUID().toString()
@@ -66,11 +77,27 @@ class RoomFourneauxRepository : FourneauxRepository {
             .groupBy { it.ingredientId }
             .map { (id, l) -> LigneRecette(id, l.sumOf { it.quantiteParLot }) }
 
-        val ingredients = stockDao.getAllIngredients().first()
+        val ingredients = stockDao.getAllIngredientsSync()
         val pivotId = p.pivotNom?.let { n ->
             ingredients.firstOrNull { it.nom.cleNom() == n.cleNom() }?.id
         }
         return Resolution(recette, pivotId, crees.size)
+    }
+
+    override fun observeProduits(): Flow<List<Produit>> {
+        return stockDao.getAllProduitsWithRecette().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeIngredients(): Flow<List<Ingredient>> {
+        return stockDao.getAllIngredients().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeCommandes(): Flow<List<Commande>> {
+        return commandeDao.getAllCommandesWithDetails().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeFournees(): Flow<List<Fournee>> {
+        return fourneeDao.getAllFourneesWithDetails().map { list -> list.map { it.toDomain() } }
     }
 
     override suspend fun getProduits(): List<Produit> {
@@ -89,7 +116,7 @@ class RoomFourneauxRepository : FourneauxRepository {
         return fourneeDao.getAllFourneesWithDetails().first().map { it.toDomain() }
     }
 
-    override suspend fun creerProduit(p: NouveauProduit): Int {
+    override suspend fun creerProduit(p: NouveauProduit): Int = db.withTransaction {
         val r = resoudre(p)
         val produitId = UUID.randomUUID().toString()
 
@@ -115,10 +142,10 @@ class RoomFourneauxRepository : FourneauxRepository {
         }
         stockDao.insertLignesRecette(lignesRecetteEntities)
 
-        return r.nbCrees
+        r.nbCrees
     }
 
-    override suspend fun modifierProduit(id: String, p: NouveauProduit): Int {
+    override suspend fun modifierProduit(id: String, p: NouveauProduit): Int = db.withTransaction {
         val r = resoudre(p)
 
         val entity = ProduitEntity(
@@ -144,27 +171,27 @@ class RoomFourneauxRepository : FourneauxRepository {
         }
         stockDao.insertLignesRecette(lignesRecetteEntities)
 
-        return r.nbCrees
+        r.nbCrees
     }
 
-    override suspend fun supprimerProduit(id: String): Boolean {
-        val commandes = getCommandes()
+    override suspend fun supprimerProduit(id: String): Boolean = db.withTransaction {
+        val commandes = commandeDao.getAllCommandesWithDetailsSync().map { it.toDomain() }
         val utilise = commandes.any { c -> c.lignes.any { it.produitId == id } }
 
         stockDao.softDeleteProduit(id)
-        return utilise
+        utilise
     }
 
-    override suspend fun lancerProduction(date: LocalDate, lignes: List<LigneDemande>) {
-        val fourneesAujourdhui = fourneeDao.getFourneesForDate(date.toEpochDay()).first()
+    override suspend fun lancerProduction(date: LocalDate, lignes: List<LigneDemande>) = db.withTransaction {
+        val fourneesAujourdhui = fourneeDao.getFourneesForDateSync(date.toEpochDay())
         check(fourneesAujourdhui.none { it.fournee.annuleeA == null }) { "Production déjà validée pour ce jour" }
 
         val demande = lignes.filter { it.quantite > 0 }
         require(demande.isNotEmpty())
 
-        val produits = getProduits()
-        val ingredients = getIngredients()
-        val commandes = getCommandes()
+        val produits = stockDao.getAllProduitsWithRecetteSync().map { it.toDomain() }
+        val ingredients = stockDao.getAllIngredientsSync().map { it.toDomain() }
+        val commandes = commandeDao.getAllCommandesWithDetailsSync().map { it.toDomain() }
 
         val requis = mutableMapOf<String, Double>()
         val lignesFournee = demande.mapNotNull { d ->
@@ -182,7 +209,7 @@ class RoomFourneauxRepository : FourneauxRepository {
 
         val consommations = requis.mapNotNull { (id, besoin) ->
             val ing = ingredients.firstOrNull { it.id == id } ?: return@mapNotNull null
-            Consommation(ing.id, ing.nom, ing.unite, besoin, minOf(besoin, ing.quantite))
+            Consommation(ing.id, ing.nom, ing.unite, besoin, minOf(besoin, ing.quantite).coerceAtLeast(0.0))
         }
 
         val fourneeId = UUID.randomUUID().toString()
@@ -244,12 +271,11 @@ class RoomFourneauxRepository : FourneauxRepository {
         }
     }
 
-    override suspend fun annulerFournee(id: String) {
-        val details = fourneeDao.getFourneeWithDetailsById(id).first() ?: return
-        if (details.fournee.annuleeA != null) return
+    override suspend fun annulerFournee(id: String) = db.withTransaction {
+        val details = fourneeDao.getFourneeWithDetailsByIdSync(id) ?: return@withTransaction
+        if (details.fournee.annuleeA != null) return@withTransaction
 
         val maintenant = System.currentTimeMillis()
-        fourneeDao.annulerFournee(id, maintenant)
 
         for (c in details.consommations) {
             if (c.deduit > 0) {
@@ -272,5 +298,7 @@ class RoomFourneauxRepository : FourneauxRepository {
                 stockDao.insertMouvementStock(mouvement)
             }
         }
+
+        fourneeDao.annulerFournee(id, maintenant)
     }
 }

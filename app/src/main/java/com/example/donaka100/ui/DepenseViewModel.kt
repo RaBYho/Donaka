@@ -7,9 +7,9 @@ import com.example.donaka100.ui.components.avecUnite
 import com.example.donaka100.ui.components.enMGA
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,6 +36,16 @@ sealed interface FiltreDepense {
     data object CeMois : FiltreDepense
     data class Categorie(val nom: String) : FiltreDepense
 }
+
+data class FiltresDepenseUi(
+    val recherche: String = "",
+    val filtre: FiltreDepense = FiltreDepense.Tout
+)
+
+private data class DonneesDepense(
+    val depenses: List<Depense>,
+    val achats: List<MouvementStock>
+)
 
 data class DepenseUiState(
     val isLoading: Boolean = true,
@@ -116,46 +126,75 @@ data class DepenseUiState(
 
 /**
  * ViewModel réactif pour la gestion des dépenses.
- * Traitement asynchrone sur Dispatchers.IO pour une réactivité instantanée.
  */
 class DepenseViewModel(
     private val repository: DepenseRepository = RoomDepenseRepository()
 ) : ViewModel() {
 
-    private val _etat = MutableStateFlow(DepenseUiState())
-    val etat: StateFlow<DepenseUiState> = _etat.asStateFlow()
+    private val _filtres = MutableStateFlow(FiltresDepenseUi())
+    private val _relance = MutableStateFlow(0)
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
-    init { charger() }
-
-    private suspend fun rafraichir() = withContext(Dispatchers.IO) {
-        coroutineScope {
-            val depensesDef = async { repository.getDepenses() }
-            val achatsDef = async { repository.getAchats() }
-            val depenses = depensesDef.await()
-            val achats = achatsDef.await()
-            _etat.update { it.copy(depenses = depenses, achats = achats) }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val donneesDepenseFlow = _relance.flatMapLatest {
+        combine(
+            repository.observeDepenses(),
+            repository.observeAchats()
+        ) { depenses, achats ->
+            DonneesDepense(depenses, achats)
         }
     }
+
+    val etat: StateFlow<DepenseUiState> = combine(
+        donneesDepenseFlow,
+        _filtres
+    ) { d, f ->
+        DepenseUiState(
+            isLoading = false,
+            erreur = null,
+            depenses = d.depenses,
+            achats = d.achats,
+            recherche = f.recherche,
+            filtre = f.filtre
+        )
+    }.catch { e ->
+        if (e is CancellationException) throw e
+        emit(DepenseUiState(isLoading = false, erreur = "Impossible de charger les dépenses."))
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = DepenseUiState(isLoading = true)
+    )
 
     fun charger() {
+        _relance.update { it + 1 }
+    }
+
+    fun actualiser() {
         viewModelScope.launch {
-            _etat.update { it.copy(isLoading = true, erreur = null) }
-            try {
-                rafraichir()
-                _etat.update { it.copy(isLoading = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                _etat.update { it.copy(isLoading = false, erreur = "Impossible de charger les dépenses.") }
+            _isRefreshing.value = true
+            val debut = System.currentTimeMillis()
+            _relance.update { it + 1 }
+            verifierSauvegardePointExtension()
+            val duree = System.currentTimeMillis() - debut
+            if (duree < 500) {
+                delay(500 - duree)
             }
+            _isRefreshing.value = false
         }
     }
 
-    fun onRecherche(t: String) = _etat.update { it.copy(recherche = t) }
-    fun onFiltre(f: FiltreDepense) = _etat.update { it.copy(filtre = f) }
+    private suspend fun verifierSauvegardePointExtension() {
+        // Point d'extension pour vérification future de la sauvegarde
+    }
+
+    fun onRecherche(t: String) = _filtres.update { it.copy(recherche = t) }
+    fun onFiltre(f: FiltreDepense) = _filtres.update { it.copy(filtre = f) }
 
     fun creer(d: NouvelleDepense) =
         action("Dépense de ${d.montant.enMGA()} enregistrée") { repository.creer(d) }
@@ -170,24 +209,12 @@ class DepenseViewModel(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { bloc() }
-                rafraichir()
                 _messages.send(succes)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                _messages.send("Échec de l'opération. Réessaie.")
+            } catch (e: Exception) {
+                _messages.send(e.message ?: "Échec de l'opération. Réessaie.")
             }
-        }
-    }
-
-    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton */
-    fun actualiser() {
-        viewModelScope.launch {
-            try {
-                rafraichir()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) { }
         }
     }
 }

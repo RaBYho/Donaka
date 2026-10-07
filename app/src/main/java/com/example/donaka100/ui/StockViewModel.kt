@@ -2,14 +2,37 @@ package com.example.donaka100.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.donaka100.data.*
+import com.example.donaka100.data.FicheFournisseur
+import com.example.donaka100.data.Fournee
+import com.example.donaka100.data.Ingredient
+import com.example.donaka100.data.ModificationAchat
+import com.example.donaka100.data.MouvementStock
+import com.example.donaka100.data.NouveauFournisseur
+import com.example.donaka100.data.NouvelAchat
+import com.example.donaka100.data.NouvelIngredient
+import com.example.donaka100.data.Produit
+import com.example.donaka100.data.RoomStockRepository
+import com.example.donaka100.data.StatutStock
+import com.example.donaka100.data.StockRepository
+import com.example.donaka100.data.cleNom
+import com.example.donaka100.data.nettoyerNom
 import com.example.donaka100.ui.components.avecUnite
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -49,6 +72,24 @@ data class Fournisseur(
         get() = ingredients.map { it.rayon.trim() }.filter { it.isNotEmpty() }
             .groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
 }
+
+data class FiltresStockUi(
+    val onglet: OngletStock = OngletStock.INVENTAIRE,
+    val recherche: String = "",
+    val filtre: FiltreStock = FiltreStock.Tout,
+    val rechercheAchat: String = "",
+    val filtreAchat: FiltreAchat = FiltreAchat.Tous,
+    val rechercheFournisseur: String = "",
+    val rayonFournisseur: String? = null
+)
+
+private data class DonneesStock(
+    val ingredients: List<Ingredient>,
+    val produits: List<Produit>,
+    val fournees: List<Fournee>,
+    val mouvements: List<MouvementStock>,
+    val fiches: List<FicheFournisseur>
+)
 
 data class StockUiState(
     val isLoading: Boolean = true,
@@ -214,62 +255,96 @@ data class StockUiState(
 
 /**
  * ViewModel réactif pour le Stock.
- * Optimisé avec des opérations asynchrones sur Dispatchers.IO.
+ * Observe directement la base de données Room via des Flows.
  */
 class StockViewModel(
     private val repository: StockRepository = RoomStockRepository()
 ) : ViewModel() {
 
-    private val _etat = MutableStateFlow(StockUiState())
-    val etat: StateFlow<StockUiState> = _etat.asStateFlow()
+    private val _filtres = MutableStateFlow(FiltresStockUi())
+    private val _relance = MutableStateFlow(0)
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
-    init { charger() }
-
-    private suspend fun rafraichir() = withContext(Dispatchers.IO) {
-        coroutineScope {
-            val ingDef = async { repository.getIngredients() }
-            val prodDef = async { repository.getProduits() }
-            val fourDef = async { repository.getFournees() }
-            val mouvDef = async { repository.getMouvements() }
-            val fichDef = async { repository.getFiches() }
-
-            val ingredients = ingDef.await()
-            val produits = prodDef.await()
-            val fournees = fourDef.await()
-            val mouvements = mouvDef.await()
-            val fiches = fichDef.await()
-
-            _etat.update {
-                it.copy(
-                    ingredients = ingredients, produits = produits, fournees = fournees,
-                    mouvements = mouvements, fiches = fiches
-                )
-            }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val donneesStockFlow = _relance.flatMapLatest {
+        combine(
+            repository.observeIngredients(),
+            repository.observeProduits(),
+            repository.observeFournees(),
+            repository.observeMouvements(),
+            repository.observeFiches()
+        ) { ingredients, produits, fournees, mouvements, fiches ->
+            DonneesStock(ingredients, produits, fournees, mouvements, fiches)
         }
     }
+
+    val etat: StateFlow<StockUiState> = combine(
+        donneesStockFlow,
+        _filtres
+    ) { d, f ->
+        StockUiState(
+            isLoading = false,
+            erreur = null,
+            ingredients = d.ingredients,
+            produits = d.produits,
+            fournees = d.fournees,
+            mouvements = d.mouvements,
+            fiches = d.fiches,
+            onglet = f.onglet,
+            recherche = f.recherche,
+            filtre = f.filtre,
+            rechercheAchat = f.rechercheAchat,
+            filtreAchat = f.filtreAchat,
+            rechercheFournisseur = f.rechercheFournisseur,
+            rayonFournisseur = f.rayonFournisseur
+        )
+    }.catch { e ->
+        if (e is CancellationException) throw e
+        emit(StockUiState(isLoading = false, erreur = "Impossible de charger le stock."))
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = StockUiState(isLoading = true)
+    )
 
     fun charger() {
+        _relance.update { it + 1 }
+    }
+
+    fun actualiser() {
         viewModelScope.launch {
-            _etat.update { it.copy(isLoading = true, erreur = null) }
-            try {
-                rafraichir()
-                _etat.update { it.copy(isLoading = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                _etat.update { it.copy(isLoading = false, erreur = "Impossible de charger le stock.") }
+            _isRefreshing.value = true
+            val debut = System.currentTimeMillis()
+            _relance.update { it + 1 }
+            verifierSauvegardePointExtension()
+            val duree = System.currentTimeMillis() - debut
+            if (duree < 500) {
+                delay(500 - duree)
             }
+            _isRefreshing.value = false
         }
     }
 
-    fun onOnglet(o: OngletStock) = _etat.update { it.copy(onglet = o) }
-    fun onRecherche(t: String) = _etat.update { it.copy(recherche = t) }
-    fun onFiltre(f: FiltreStock) = _etat.update { it.copy(filtre = f) }
-    fun onRechercheAchat(t: String) = _etat.update { it.copy(rechercheAchat = t) }
-    fun onFiltreAchat(f: FiltreAchat) = _etat.update { it.copy(filtreAchat = f) }
+    private suspend fun verifierSauvegardePointExtension() {
+        // Point d'extension pour vérification future de la sauvegarde
+    }
+
+    fun onOnglet(o: OngletStock) = _filtres.update { it.copy(onglet = o) }
+    fun onRecherche(t: String) = _filtres.update { it.copy(recherche = t) }
+    fun onFiltre(f: FiltreStock) = _filtres.update { it.copy(filtre = f) }
+    fun onRechercheAchat(t: String) = _filtres.update { it.copy(rechercheAchat = t) }
+    fun onFiltreAchat(f: FiltreAchat) = _filtres.update { it.copy(filtreAchat = f) }
+    fun onRechercheFournisseur(t: String) = _filtres.update { it.copy(rechercheFournisseur = t) }
+    fun onRayonFournisseur(r: String?) = _filtres.update { it.copy(rayonFournisseur = r) }
+
+    fun voirAchats(nom: String) = _filtres.update {
+        it.copy(onglet = OngletStock.ACHAT, rechercheAchat = nom, filtreAchat = FiltreAchat.Tous)
+    }
 
     fun modifierAchat(m: MouvementStock, mod: ModificationAchat) =
         action("Achat mis à jour") { repository.modifierAchat(m.id, mod) }
@@ -279,9 +354,6 @@ class StockViewModel(
             repository.annulerAchat(m.id)
         }
 
-    fun onRechercheFournisseur(t: String) = _etat.update { it.copy(rechercheFournisseur = t) }
-    fun onRayonFournisseur(r: String?) = _etat.update { it.copy(rayonFournisseur = r) }
-
     fun creerFournisseur(f: NouveauFournisseur) =
         action("« ${f.nom.nettoyerNom()} » ajouté aux fournisseurs") { repository.creerFournisseur(f) }
 
@@ -290,10 +362,6 @@ class StockViewModel(
 
     fun supprimerFournisseur(nom: String) =
         action("« $nom » supprimé") { repository.supprimerFournisseur(nom) }
-
-    fun voirAchats(nom: String) = _etat.update {
-        it.copy(onglet = OngletStock.ACHAT, rechercheAchat = nom, filtreAchat = FiltreAchat.Tous)
-    }
 
     fun creerIngredient(i: NouvelIngredient) =
         action("« ${i.nom.nettoyerNom()} » ajouté au stock") { repository.creerIngredient(i) }
@@ -310,7 +378,7 @@ class StockViewModel(
         }
 
     fun acheter(a: NouvelAchat) = actionMsg {
-        val existant = _etat.value.ingredients.firstOrNull { it.nom.cleNom() == a.nom.cleNom() }
+        val existant = etat.value.ingredients.firstOrNull { it.nom.cleNom() == a.nom.cleNom() }
         val unite = existant?.unite ?: a.unite
         val cree = repository.acheter(a)
         "Achat enregistré : +${a.quantite.avecUnite(unite)}" + if (cree) " · ingrédient ajouté au stock" else ""
@@ -322,24 +390,12 @@ class StockViewModel(
         viewModelScope.launch {
             try {
                 val message = withContext(Dispatchers.IO) { bloc() }
-                rafraichir()
                 _messages.send(message)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                _messages.send("Échec de l'opération. Réessaie.")
+            } catch (e: Exception) {
+                _messages.send(e.message ?: "Échec de l'opération. Réessaie.")
             }
-        }
-    }
-
-    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton */
-    fun actualiser() {
-        viewModelScope.launch {
-            try {
-                rafraichir()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) { }
         }
     }
 }

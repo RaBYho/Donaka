@@ -19,6 +19,9 @@ interface PaiementDao {
     @Query("SELECT * FROM paiements WHERE commandeId = :commandeId AND annule = 0 ORDER BY dateHeure DESC")
     fun getPaiementsForCommande(commandeId: String): Flow<List<PaiementEntity>>
 
+    @Query("SELECT * FROM paiements WHERE commandeId = :commandeId AND annule = 0 ORDER BY dateHeure DESC")
+    suspend fun getPaiementsForCommandeSync(commandeId: String): List<PaiementEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPaiement(paiement: PaiementEntity)
 

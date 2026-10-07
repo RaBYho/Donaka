@@ -1,7 +1,11 @@
 package com.example.donaka100.ui.layout
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,16 +18,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.donaka100.ui.ParametresViewModel
 import com.example.donaka100.ui.navigation.Destination
 import com.example.donaka100.ui.screens.BoardScreen
 import com.example.donaka100.ui.screens.CommandeScreen
 import com.example.donaka100.ui.screens.DepensesScreen
 import com.example.donaka100.ui.screens.FourneauxScreen
+import com.example.donaka100.ui.screens.ParametresScreen
 import com.example.donaka100.ui.screens.StockScreen
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -33,7 +42,36 @@ private const val TAB_ANIM_MS = 320
  * Application Donaka principale avec transitions entre onglets ultra-fluides.
  */
 @Composable
-fun DonakaApp() {
+fun DonakaApp(
+    paramVm: ParametresViewModel = viewModel()
+) {
+    val reglages by paramVm.reglages.collectAsStateWithLifecycle()
+    var afficherParametres by rememberSaveable { mutableStateOf(false) }
+
+    AnimatedContent(
+        targetState = afficherParametres,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing)) togetherWith
+                    fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing))
+        },
+        label = "appScreenTransition"
+    ) { showSettings ->
+        if (showSettings) {
+            ParametresScreen(onRetour = { afficherParametres = false })
+        } else {
+            MainAppScreen(
+                nomBoulangerie = reglages.nomBoulangerie,
+                onProfile = { afficherParametres = true }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MainAppScreen(
+    nomBoulangerie: String,
+    onProfile: () -> Unit
+) {
     val destinations = Destination.entries
 
     // Source de vérité : l'onglet courant.
@@ -72,7 +110,7 @@ fun DonakaApp() {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { TopBar() },
+        topBar = { TopBar(nomBoulangerie = nomBoulangerie, onProfile = onProfile) },
         bottomBar = { BottomBar(courant, onSelection = { courant = it }) },
     ) { padding ->
         HorizontalPager(

@@ -23,6 +23,10 @@ interface FourneeDao {
     fun getFourneesForDate(date: Long): Flow<List<FourneeWithDetails>>
 
     @Transaction
+    @Query("SELECT * FROM fournees WHERE date = :date ORDER BY heure DESC")
+    suspend fun getFourneesForDateSync(date: Long): List<FourneeWithDetails>
+
+    @Transaction
     @Query("SELECT * FROM fournees WHERE id = :id")
     fun getFourneeWithDetailsById(id: String): Flow<FourneeWithDetails?>
 

@@ -21,6 +21,9 @@ interface StockDao {
     @Query("SELECT * FROM ingredients WHERE archive = 0 ORDER BY nom ASC")
     fun getAllIngredients(): Flow<List<IngredientEntity>>
 
+    @Query("SELECT * FROM ingredients WHERE archive = 0 ORDER BY nom ASC")
+    suspend fun getAllIngredientsSync(): List<IngredientEntity>
+
     @Query("SELECT * FROM ingredients WHERE id = :id AND archive = 0")
     fun getIngredientById(id: String): Flow<IngredientEntity?>
 
@@ -64,6 +67,10 @@ interface StockDao {
     fun getAllProduitsWithRecette(): Flow<List<ProduitWithRecette>>
 
     @Transaction
+    @Query("SELECT * FROM produits WHERE archive = 0 ORDER BY nom ASC")
+    suspend fun getAllProduitsWithRecetteSync(): List<ProduitWithRecette>
+
+    @Transaction
     @Query("SELECT * FROM produits WHERE id = :id AND archive = 0")
     fun getProduitWithRecetteById(id: String): Flow<ProduitWithRecette?>
 
@@ -94,6 +101,12 @@ interface StockDao {
     // --- Mouvements de Stock ---
     @Query("SELECT * FROM mouvements_stock ORDER BY dateHeure DESC")
     fun getAllMouvementsStock(): Flow<List<MouvementStockEntity>>
+
+    @Query("SELECT * FROM mouvements_stock ORDER BY dateHeure DESC")
+    suspend fun getAllMouvementsStockSync(): List<MouvementStockEntity>
+
+    @Query("SELECT * FROM mouvements_stock WHERE id = :id")
+    suspend fun getMouvementStockByIdSync(id: String): MouvementStockEntity?
 
     @Query("SELECT * FROM mouvements_stock WHERE ingredientId = :ingredientId ORDER BY dateHeure DESC")
     fun getMouvementsForIngredient(ingredientId: String): Flow<List<MouvementStockEntity>>
