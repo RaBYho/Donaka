@@ -22,6 +22,7 @@ import com.example.donaka100.data.BoardData
 import com.example.donaka100.ui.BoardUiState
 import com.example.donaka100.ui.BoardViewModel
 import com.example.donaka100.ui.components.DonakaEmptyState
+import com.example.donaka100.ui.components.DonakaPullRefresh
 import com.example.donaka100.ui.screens.board.*
 import com.example.donaka100.ui.forms.AchatFormSheet
 import com.example.donaka100.ui.forms.ClientFormSheet
@@ -40,43 +41,48 @@ fun BoardScreen(
     vm: BoardViewModel = viewModel()
 ) {
     val etat by vm.etat.collectAsStateWithLifecycle()
+    val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialogue by remember { mutableStateOf<DialogueBoard?>(null) }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
-    LaunchedEffect(Unit) { vm.actualiser() }
 
-    Box(Modifier.fillMaxSize()) {
-        AnimatedContent(
-            targetState = etat,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) togetherWith
-                        fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
-            },
-            label = "boardStateTransition"
-        ) { e ->
-            when (e) {
-                is BoardUiState.Loading -> BoardContent(
-                    data = BoardData(), isLoading = true,
-                    onVente = {}, onSortie = {}, onFournee = {}, onVoirStock = {}, onVoirCommande = {}, onVoirDepenses = {}
-                )
-                is BoardUiState.Success -> BoardContent(
-                    data = e.data, isLoading = false,
-                    onVente = { dialogue = DialogueBoard.CLIENT },
-                    onSortie = { dialogue = DialogueBoard.ACHAT },
-                    onFournee = onVoirFourneaux,
-                    onVoirStock = onVoirStock,
-                    onVoirCommande = onVoirCommande,
-                    onVoirDepenses = onVoirDepenses
-                )
-                is BoardUiState.Error -> DonakaEmptyState(
-                    titre = "Connexion impossible", message = e.message,
-                    icone = Icons.Default.CloudOff,
-                    labelAction = "Réessayer", onAction = vm::charger
-                )
+    DonakaPullRefresh(
+        isRefreshing = isRefreshing,
+        onRefresh = vm::actualiser
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            AnimatedContent(
+                targetState = etat,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) togetherWith
+                            fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
+                },
+                label = "boardStateTransition"
+            ) { e ->
+                when (e) {
+                    is BoardUiState.Loading -> BoardContent(
+                        data = BoardData(), isLoading = true,
+                        onVente = {}, onSortie = {}, onFournee = {}, onVoirStock = {}, onVoirCommande = {}, onVoirDepenses = {}
+                    )
+                    is BoardUiState.Success -> BoardContent(
+                        data = e.data, isLoading = false,
+                        onVente = { dialogue = DialogueBoard.CLIENT },
+                        onSortie = { dialogue = DialogueBoard.ACHAT },
+                        onFournee = onVoirFourneaux,
+                        onVoirStock = onVoirStock,
+                        onVoirCommande = onVoirCommande,
+                        onVoirDepenses = onVoirDepenses
+                    )
+                    is BoardUiState.Error -> DonakaEmptyState(
+                        titre = "Connexion impossible", message = e.message,
+                        icone = Icons.Default.CloudOff,
+                        labelAction = "Réessayer", onAction = vm::charger
+                    )
+                }
             }
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 
     val data = (etat as? BoardUiState.Success)?.data

@@ -1,6 +1,8 @@
 package com.example.donaka100.data
 
+import androidx.room.withTransaction
 import com.example.donaka100.DonakaApplication
+import com.example.donaka100.data.local.DonakaDatabase
 import com.example.donaka100.data.local.FifoImputationHelper
 import com.example.donaka100.data.local.entity.ClientEntity
 import com.example.donaka100.data.local.entity.CommandeEntity
@@ -8,10 +10,17 @@ import com.example.donaka100.data.local.entity.LigneCommandeEntity
 import com.example.donaka100.data.local.entity.PaiementEntity
 import com.example.donaka100.data.local.toDomain
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 import java.util.UUID
 
 interface CommandeRepository {
+    fun observeClients(): Flow<List<Client>>
+    fun observeEncaissements(): Flow<List<Encaissement>>
+    fun observeCommandes(): Flow<List<Commande>>
+    fun observeProduits(): Flow<List<Produit>>
+
     suspend fun getClients(): List<Client>
     suspend fun getEncaissements(): List<Encaissement>
     suspend fun getCommandes(): List<Commande>
@@ -31,9 +40,11 @@ interface CommandeRepository {
     suspend fun rattacherClient(commandeId: String, client: NouveauClient)
 }
 
-class RoomCommandeRepository : CommandeRepository {
+class RoomCommandeRepository(
+    private val database: DonakaDatabase = DonakaApplication.instance.database
+) : CommandeRepository {
 
-    private val db get() = DonakaApplication.instance.database
+    private val db get() = database
     private val clientDao get() = db.clientDao()
     private val commandeDao get() = db.commandeDao()
     private val paiementDao get() = db.paiementDao()
@@ -44,6 +55,22 @@ class RoomCommandeRepository : CommandeRepository {
     private fun numero(prefixe: String): String {
         compteur++
         return "$prefixe-%04d".format(compteur)
+    }
+
+    override fun observeClients(): Flow<List<Client>> {
+        return clientDao.getAllClientsWithDetails().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeEncaissements(): Flow<List<Encaissement>> {
+        return paiementDao.getAllPaiements().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeCommandes(): Flow<List<Commande>> {
+        return commandeDao.getAllCommandesWithDetails().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun observeProduits(): Flow<List<Produit>> {
+        return stockDao.getAllProduitsWithRecette().map { list -> list.map { it.toDomain() }.filterNot { it.archive } }
     }
 
     override suspend fun getClients(): List<Client> {
@@ -62,7 +89,7 @@ class RoomCommandeRepository : CommandeRepository {
         return stockDao.getAllProduitsWithRecette().first().map { it.toDomain() }.filterNot { it.archive }
     }
 
-    override suspend fun creerClient(client: NouveauClient) {
+    override suspend fun creerClient(client: NouveauClient) = db.withTransaction {
         val entity = ClientEntity(
             id = UUID.randomUUID().toString(),
             nom = client.nom.nettoyerNom(),
@@ -75,8 +102,8 @@ class RoomCommandeRepository : CommandeRepository {
         clientDao.insertClient(entity)
     }
 
-    override suspend fun modifierClient(id: String, client: NouveauClient) {
-        val existant = clientDao.getClientByIdSync(id) ?: return
+    override suspend fun modifierClient(id: String, client: NouveauClient) = db.withTransaction {
+        val existant = clientDao.getClientByIdSync(id) ?: return@withTransaction
         val updated = existant.copy(
             nom = client.nom.nettoyerNom(),
             telephone = client.telephone,
@@ -86,12 +113,12 @@ class RoomCommandeRepository : CommandeRepository {
         clientDao.updateClient(updated)
     }
 
-    override suspend fun supprimerClient(id: String) {
+    override suspend fun supprimerClient(id: String) = db.withTransaction {
         clientDao.softDeleteClient(id)
     }
 
-    override suspend fun encaisser(clientId: String, montant: Long, mode: ModeReglement) {
-        val clientWithDetails = clientDao.getClientWithDetailsByIdSync(clientId) ?: return
+    override suspend fun encaisser(clientId: String, montant: Long, mode: ModeReglement) = db.withTransaction {
+        val clientWithDetails = clientDao.getClientWithDetailsByIdSync(clientId) ?: return@withTransaction
         val commandesLivrees = commandeDao.getCommandesLivreesNonPayeesSync(clientId)
 
         val paiementsAInserer = FifoImputationHelper.imputerPaiementFIFO(
@@ -107,9 +134,9 @@ class RoomCommandeRepository : CommandeRepository {
         paiementDao.insertPaiements(paiementsAInserer)
     }
 
-    override suspend fun creerCommande(c: NouvelleCommande) {
-        val client = clientDao.getClientByIdSync(c.clientId) ?: return
-        val produits = getProduits()
+    override suspend fun creerCommande(c: NouvelleCommande) = db.withTransaction {
+        val client = clientDao.getClientByIdSync(c.clientId) ?: return@withTransaction
+        val produits = stockDao.getAllProduitsWithRecetteSync().map { it.toDomain() }.filterNot { it.archive }
 
         val commandeId = UUID.randomUUID().toString()
         val epochDate = c.date.toEpochDay()
@@ -142,17 +169,19 @@ class RoomCommandeRepository : CommandeRepository {
         commandeDao.insertLignesCommande(lignesEntities)
     }
 
-    override suspend fun modifierCommande(id: String, c: NouvelleCommande) {
-        val existing = commandeDao.getCommandeWithDetailsByIdSync(id) ?: return
-        if (existing.commande.livreeA != null) return
+    override suspend fun modifierCommande(id: String, c: NouvelleCommande) = db.withTransaction {
+        val existing = commandeDao.getCommandeWithDetailsByIdSync(id) ?: return@withTransaction
+        if (existing.commande.livreeA != null) return@withTransaction
 
-        val produits = getProduits()
+        val produits = stockDao.getAllProduitsWithRecetteSync().map { it.toDomain() }.filterNot { it.archive }
         val updatedCommande = existing.commande.copy(
             date = c.date.toEpochDay(),
             heureSouhaitee = c.heure,
             echeance = c.date.plusDays(7).toEpochDay()
         )
         commandeDao.updateCommande(updatedCommande)
+
+        commandeDao.deleteLignesForCommande(id)
 
         val newLignesEntities = c.lignes.filter { it.quantite > 0 }.mapNotNull { d ->
             val p = produits.firstOrNull { it.id == d.produitId } ?: return@mapNotNull null
@@ -169,13 +198,13 @@ class RoomCommandeRepository : CommandeRepository {
         commandeDao.insertLignesCommande(newLignesEntities)
     }
 
-    override suspend fun supprimerCommande(id: String) {
+    override suspend fun supprimerCommande(id: String) = db.withTransaction {
         commandeDao.softDeleteCommande(id)
     }
 
-    override suspend fun livrer(commandeId: String, montantRecu: Long, mode: ModeReglement?) {
-        val details = commandeDao.getCommandeWithDetailsByIdSync(commandeId) ?: return
-        if (details.commande.livreeA != null) return
+    override suspend fun livrer(commandeId: String, montantRecu: Long, mode: ModeReglement?) = db.withTransaction {
+        val details = commandeDao.getCommandeWithDetailsByIdSync(commandeId) ?: return@withTransaction
+        if (details.commande.livreeA != null) return@withTransaction
 
         val maintenant = System.currentTimeMillis()
         commandeDao.marquerLivree(commandeId, maintenant)
@@ -218,11 +247,11 @@ class RoomCommandeRepository : CommandeRepository {
         }
     }
 
-    override suspend fun annulerLivraison(commandeId: String) {
-        val details = commandeDao.getCommandeWithDetailsByIdSync(commandeId) ?: return
-        if (details.commande.livreeA == null) return
+    override suspend fun annulerLivraison(commandeId: String) = db.withTransaction {
+        val details = commandeDao.getCommandeWithDetailsByIdSync(commandeId) ?: return@withTransaction
+        if (details.commande.livreeA == null) return@withTransaction
 
-        val paiementsCommande = paiementDao.getPaiementsForCommande(commandeId).first()
+        val paiementsCommande = paiementDao.getPaiementsForCommandeSync(commandeId)
         for (p in paiementsCommande) {
             paiementDao.annulerPaiement(p.id)
         }
@@ -235,10 +264,10 @@ class RoomCommandeRepository : CommandeRepository {
         }
     }
 
-    override suspend fun venteNonPrevue(lignes: List<LigneDemande>, mode: ModeReglement) {
-        val produits = getProduits()
+    override suspend fun venteNonPrevue(lignes: List<LigneDemande>, mode: ModeReglement) = db.withTransaction {
+        val produits = stockDao.getAllProduitsWithRecetteSync().map { it.toDomain() }.filterNot { it.archive }
         val demande = lignes.filter { it.quantite > 0 }
-        if (demande.isEmpty()) return
+        if (demande.isEmpty()) return@withTransaction
 
         val maintenant = System.currentTimeMillis()
         val commandeId = UUID.randomUUID().toString()
@@ -288,7 +317,7 @@ class RoomCommandeRepository : CommandeRepository {
         paiementDao.insertPaiement(paiement)
     }
 
-    override suspend fun rattacherClient(commandeId: String, client: NouveauClient) {
+    override suspend fun rattacherClient(commandeId: String, client: NouveauClient) = db.withTransaction {
         val clientId = UUID.randomUUID().toString()
         val clientEntity = ClientEntity(
             id = clientId,
@@ -301,7 +330,7 @@ class RoomCommandeRepository : CommandeRepository {
         )
         clientDao.insertClient(clientEntity)
 
-        val cmd = commandeDao.getCommandeWithDetailsByIdSync(commandeId) ?: return
+        val cmd = commandeDao.getCommandeWithDetailsByIdSync(commandeId) ?: return@withTransaction
         val updatedCmd = cmd.commande.copy(
             clientId = clientId,
             clientNom = clientEntity.nom,

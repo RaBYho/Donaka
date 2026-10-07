@@ -52,7 +52,7 @@ import com.example.donaka100.data.local.entity.ProduitEntity
         DepenseEntity::class
     ],
     version = 1,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(DonakaTypeConverters::class)
 abstract class DonakaDatabase : RoomDatabase() {

@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.donaka100.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -18,45 +20,56 @@ sealed interface BoardUiState {
 
 /**
  * ViewModel réactif pour le Tableau de bord Donaka.
- * Exécute tous les calculs sur Dispatchers.Default / IO pour éviter les saccades sur le Thread UI.
  */
 class BoardViewModel(
     private val repository: BoardRepository = RoomBoardRepository()
 ) : ViewModel() {
 
-    private val _etat = MutableStateFlow<BoardUiState>(BoardUiState.Loading)
-    val etat: StateFlow<BoardUiState> = _etat.asStateFlow()
+    private val _relance = MutableStateFlow(0)
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
-    init { charger() }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val boardDataFlow = _relance.flatMapLatest {
+        repository.observeBoard()
+    }
+
+    val etat: StateFlow<BoardUiState> = boardDataFlow
+        .map<BoardData, BoardUiState> { BoardUiState.Success(it) }
+        .catch { e ->
+            if (e is CancellationException) throw e
+            emit(BoardUiState.Error("Impossible de charger les données."))
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = BoardUiState.Loading
+        )
 
     fun charger() {
+        _relance.update { it + 1 }
+    }
+
+    fun actualiser() {
         viewModelScope.launch {
-            _etat.value = BoardUiState.Loading
-            try {
-                // Transfert du calcul sur le thread d'arrière-plan pour une réactivité maximale
-                val result = withContext(Dispatchers.Default) { repository.getBoard() }
-                _etat.value = BoardUiState.Success(result)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _etat.value = BoardUiState.Error("Impossible de charger les données.")
+            _isRefreshing.value = true
+            val debut = System.currentTimeMillis()
+            _relance.update { it + 1 }
+            verifierSauvegardePointExtension()
+            val duree = System.currentTimeMillis() - debut
+            if (duree < 500) {
+                delay(500 - duree)
             }
+            _isRefreshing.value = false
         }
     }
 
-    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton intrusive */
-    fun actualiser() {
-        viewModelScope.launch {
-            try {
-                val result = withContext(Dispatchers.Default) { repository.getBoard() }
-                _etat.value = BoardUiState.Success(result)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) { }
-        }
+    private suspend fun verifierSauvegardePointExtension() {
+        // Point d'extension pour vérification future de la sauvegarde
     }
 
     fun creerClient(c: NouveauClient) =
@@ -69,13 +82,11 @@ class BoardViewModel(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { bloc() }
-                val result = withContext(Dispatchers.Default) { repository.getBoard() }
-                _etat.value = BoardUiState.Success(result)
                 _messages.send(succes)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _messages.send("Échec de l'enregistrement. Réessaie.")
+                _messages.send(e.message ?: "Échec de l'enregistrement. Réessaie.")
             }
         }
     }

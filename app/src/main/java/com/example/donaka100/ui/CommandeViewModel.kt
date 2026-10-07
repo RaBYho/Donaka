@@ -6,9 +6,9 @@ import com.example.donaka100.data.*
 import com.example.donaka100.ui.components.enMGA
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -38,6 +38,20 @@ enum class FiltreHistorique(val libelle: String) {
         A_CREDIT -> e.type == TypeMouvement.A_CREDIT
     }
 }
+
+data class FiltresCommandeUi(
+    val recherche: String = "",
+    val rechercheHistorique: String = "",
+    val filtre: FiltreHistorique = FiltreHistorique.TOUT,
+    val onglet: OngletCommande = OngletCommande.DU_JOUR
+)
+
+private data class DonneesCommande(
+    val clients: List<Client>,
+    val encaissements: List<Encaissement>,
+    val commandes: List<Commande>,
+    val produits: List<Produit>
+)
 
 data class CommandeUiState(
     val isLoading: Boolean = true,
@@ -119,56 +133,83 @@ data class CommandeUiState(
 
 /**
  * ViewModel réactif pour la gestion des commandes et encaissements.
- * Exécute les requêtes sur Dispatchers.IO pour éliminer toute saccade lors de la mise à jour de l'UI.
  */
 class CommandeViewModel(
     private val repository: CommandeRepository = RoomCommandeRepository()
 ) : ViewModel() {
 
-    private val _etat = MutableStateFlow(CommandeUiState())
-    val etat: StateFlow<CommandeUiState> = _etat.asStateFlow()
+    private val _filtres = MutableStateFlow(FiltresCommandeUi())
+    private val _relance = MutableStateFlow(0)
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
-    init { charger() }
-
-    private suspend fun rafraichir() = withContext(Dispatchers.IO) {
-        coroutineScope {
-            val clientsDef = async { repository.getClients() }
-            val encaissementsDef = async { repository.getEncaissements() }
-            val commandesDef = async { repository.getCommandes() }
-            val produitsDef = async { repository.getProduits() }
-
-            val clients = clientsDef.await()
-            val encaissements = encaissementsDef.await()
-            val commandes = commandesDef.await()
-            val produits = produitsDef.await()
-
-            _etat.update {
-                it.copy(clients = clients, encaissements = encaissements, commandes = commandes, produits = produits)
-            }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val donneesCommandeFlow = _relance.flatMapLatest {
+        combine(
+            repository.observeClients(),
+            repository.observeEncaissements(),
+            repository.observeCommandes(),
+            repository.observeProduits()
+        ) { clients, encaissements, commandes, produits ->
+            DonneesCommande(clients, encaissements, commandes, produits)
         }
     }
+
+    val etat: StateFlow<CommandeUiState> = combine(
+        donneesCommandeFlow,
+        _filtres
+    ) { d, f ->
+        CommandeUiState(
+            isLoading = false,
+            erreur = null,
+            clients = d.clients,
+            encaissements = d.encaissements,
+            commandes = d.commandes,
+            produits = d.produits,
+            recherche = f.recherche,
+            rechercheHistorique = f.rechercheHistorique,
+            filtre = f.filtre,
+            onglet = f.onglet
+        )
+    }.catch { e ->
+        if (e is CancellationException) throw e
+        emit(CommandeUiState(isLoading = false, erreur = "Impossible de charger les données."))
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = CommandeUiState(isLoading = true)
+    )
 
     fun charger() {
+        _relance.update { it + 1 }
+    }
+
+    fun actualiser() {
         viewModelScope.launch {
-            _etat.update { it.copy(isLoading = true, erreur = null) }
-            try {
-                rafraichir()
-                _etat.update { it.copy(isLoading = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _etat.update { it.copy(isLoading = false, erreur = "Impossible de charger les données.") }
+            _isRefreshing.value = true
+            val debut = System.currentTimeMillis()
+            _relance.update { it + 1 }
+            verifierSauvegardePointExtension()
+            val duree = System.currentTimeMillis() - debut
+            if (duree < 500) {
+                delay(500 - duree)
             }
+            _isRefreshing.value = false
         }
     }
 
-    fun onRecherche(texte: String) = _etat.update { it.copy(recherche = texte) }
-    fun onRechercheHistorique(texte: String) = _etat.update { it.copy(rechercheHistorique = texte) }
-    fun onFiltre(filtre: FiltreHistorique) = _etat.update { it.copy(filtre = filtre) }
-    fun onOnglet(onglet: OngletCommande) = _etat.update { it.copy(onglet = onglet) }
+    private suspend fun verifierSauvegardePointExtension() {
+        // Point d'extension pour vérification future de la sauvegarde
+    }
+
+    fun onRecherche(texte: String) = _filtres.update { it.copy(recherche = texte) }
+    fun onRechercheHistorique(texte: String) = _filtres.update { it.copy(rechercheHistorique = texte) }
+    fun onFiltre(filtre: FiltreHistorique) = _filtres.update { it.copy(filtre = filtre) }
+    fun onOnglet(onglet: OngletCommande) = _filtres.update { it.copy(onglet = onglet) }
 
     // ----- Clients -----
     fun creerClient(c: NouveauClient) =
@@ -185,7 +226,7 @@ class CommandeViewModel(
 
     // ----- Commandes -----
     fun creerCommande(n: NouvelleCommande) {
-        val existe = _etat.value.commandes.any { it.clientId == n.clientId && it.date == n.date }
+        val existe = etat.value.commandes.any { it.clientId == n.clientId && it.date == n.date }
         if (existe) {
             viewModelScope.launch { _messages.send("Ce client a déjà une commande pour ce jour : modifie-la.") }
             return
@@ -215,29 +256,16 @@ class CommandeViewModel(
     fun rattacherClient(c: Commande, client: NouveauClient) =
         action("${client.nom} ajouté comme client") { repository.rattacherClient(c.id, client) }
 
-    /** Modèle d'action optimisé : exécute en IO, rafraîchit réactivement, notifie */
     private fun action(succes: String, bloc: suspend () -> Unit) {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { bloc() }
-                rafraichir()
                 _messages.send(succes)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _messages.send("Échec de l'opération. Réessaie.")
+                _messages.send(e.message ?: "Échec de l'opération. Réessaie.")
             }
-        }
-    }
-
-    /** À l'ouverture de l'écran : met à jour en arrière-plan sans skeleton */
-    fun actualiser() {
-        viewModelScope.launch {
-            try {
-                rafraichir()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) { }
         }
     }
 }

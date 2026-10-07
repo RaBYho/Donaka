@@ -52,12 +52,16 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopBar(
+    nomBoulangerie: String = "",
     onNotifications: () -> Unit = {},
     onProfile: () -> Unit = {},
     showNotificationBadge: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     val dateLabel = remember { todayLabel() }
+    val titreHeader = remember(nomBoulangerie) {
+        if (nomBoulangerie.isBlank()) "Donaka" else nomBoulangerie
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         TopAppBar(
@@ -71,7 +75,7 @@ fun TopBar(
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "Donaka",
+                            text = titreHeader,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = scheme.primary,

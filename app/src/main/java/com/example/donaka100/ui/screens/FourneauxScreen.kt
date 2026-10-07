@@ -42,15 +42,19 @@ private sealed interface DialogueFourneaux {
 @Composable
 fun FourneauxScreen(vm: FourneauxViewModel = viewModel()) {
     val etat by vm.etat.collectAsStateWithLifecycle()
+    val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var dialogue by remember { mutableStateOf<DialogueFourneaux?>(null) }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(Unit) { vm.onOnglet(OngletFourneaux.A_PREPARER) }
-    LaunchedEffect(Unit) { vm.actualiser() }
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+    DonakaPullRefresh(
+        isRefreshing = isRefreshing,
+        onRefresh = vm::actualiser
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
             Column(
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -125,6 +129,7 @@ fun FourneauxScreen(vm: FourneauxViewModel = viewModel()) {
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+}
 
     when (val d = dialogue) {
         null -> Unit

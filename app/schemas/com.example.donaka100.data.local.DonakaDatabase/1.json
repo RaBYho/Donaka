@@ -1,0 +1,1317 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "776bc9fe352368ec11c8c99f49f35fb6",
+    "entities": [
+      {
+        "tableName": "ingredients",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `unite` TEXT NOT NULL, `quantite` REAL NOT NULL, `seuil` REAL NOT NULL, `rayon` TEXT NOT NULL, `fournisseur` TEXT NOT NULL, `archive` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nom",
+            "columnName": "nom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unite",
+            "columnName": "unite",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantite",
+            "columnName": "quantite",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seuil",
+            "columnName": "seuil",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rayon",
+            "columnName": "rayon",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fournisseur",
+            "columnName": "fournisseur",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archive",
+            "columnName": "archive",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "prix_ingredients",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `ingredientId` TEXT NOT NULL, `prixParUnite` INTEGER NOT NULL, `dateEnregistrement` INTEGER NOT NULL, `fournisseur` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`ingredientId`) REFERENCES `ingredients`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingredientId",
+            "columnName": "ingredientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prixParUnite",
+            "columnName": "prixParUnite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateEnregistrement",
+            "columnName": "dateEnregistrement",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fournisseur",
+            "columnName": "fournisseur",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_prix_ingredients_ingredientId",
+            "unique": false,
+            "columnNames": [
+              "ingredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_prix_ingredients_ingredientId` ON `${TABLE_NAME}` (`ingredientId`)"
+          },
+          {
+            "name": "index_prix_ingredients_dateEnregistrement",
+            "unique": false,
+            "columnNames": [
+              "dateEnregistrement"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_prix_ingredients_dateEnregistrement` ON `${TABLE_NAME}` (`dateEnregistrement`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "ingredients",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "ingredientId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "produits",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `prixGros` INTEGER NOT NULL, `prixPublic` INTEGER NOT NULL, `piecesParLot` INTEGER NOT NULL, `categorie` TEXT NOT NULL, `pivotIngredientId` TEXT, `archive` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nom",
+            "columnName": "nom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prixGros",
+            "columnName": "prixGros",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prixPublic",
+            "columnName": "prixPublic",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "piecesParLot",
+            "columnName": "piecesParLot",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categorie",
+            "columnName": "categorie",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pivotIngredientId",
+            "columnName": "pivotIngredientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "archive",
+            "columnName": "archive",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "lignes_recette",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`produitId` TEXT NOT NULL, `ingredientId` TEXT NOT NULL, `quantiteParLot` REAL NOT NULL, `estPivot` INTEGER NOT NULL, PRIMARY KEY(`produitId`, `ingredientId`), FOREIGN KEY(`produitId`) REFERENCES `produits`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`ingredientId`) REFERENCES `ingredients`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "produitId",
+            "columnName": "produitId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingredientId",
+            "columnName": "ingredientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantiteParLot",
+            "columnName": "quantiteParLot",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "estPivot",
+            "columnName": "estPivot",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "produitId",
+            "ingredientId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_lignes_recette_produitId",
+            "unique": false,
+            "columnNames": [
+              "produitId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lignes_recette_produitId` ON `${TABLE_NAME}` (`produitId`)"
+          },
+          {
+            "name": "index_lignes_recette_ingredientId",
+            "unique": false,
+            "columnNames": [
+              "ingredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lignes_recette_ingredientId` ON `${TABLE_NAME}` (`ingredientId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "produits",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "produitId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "ingredients",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "ingredientId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "fournees",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `date` INTEGER NOT NULL, `heure` INTEGER NOT NULL, `annuleeA` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heure",
+            "columnName": "heure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "annuleeA",
+            "columnName": "annuleeA",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "lignes_fournee",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `fourneeId` TEXT NOT NULL, `produitId` TEXT NOT NULL, `nomProduit` TEXT NOT NULL, `quantite` INTEGER NOT NULL, `quantitePlanifiee` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`fourneeId`) REFERENCES `fournees`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`produitId`) REFERENCES `produits`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fourneeId",
+            "columnName": "fourneeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "produitId",
+            "columnName": "produitId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nomProduit",
+            "columnName": "nomProduit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantite",
+            "columnName": "quantite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantitePlanifiee",
+            "columnName": "quantitePlanifiee",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_lignes_fournee_fourneeId",
+            "unique": false,
+            "columnNames": [
+              "fourneeId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lignes_fournee_fourneeId` ON `${TABLE_NAME}` (`fourneeId`)"
+          },
+          {
+            "name": "index_lignes_fournee_produitId",
+            "unique": false,
+            "columnNames": [
+              "produitId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lignes_fournee_produitId` ON `${TABLE_NAME}` (`produitId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "fournees",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fourneeId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "produits",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "produitId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "consommations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `fourneeId` TEXT NOT NULL, `ingredientId` TEXT NOT NULL, `nomIngredient` TEXT NOT NULL, `unite` TEXT NOT NULL, `requis` REAL NOT NULL, `deduit` REAL NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`fourneeId`) REFERENCES `fournees`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`ingredientId`) REFERENCES `ingredients`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fourneeId",
+            "columnName": "fourneeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingredientId",
+            "columnName": "ingredientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nomIngredient",
+            "columnName": "nomIngredient",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unite",
+            "columnName": "unite",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requis",
+            "columnName": "requis",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deduit",
+            "columnName": "deduit",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_consommations_fourneeId",
+            "unique": false,
+            "columnNames": [
+              "fourneeId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_consommations_fourneeId` ON `${TABLE_NAME}` (`fourneeId`)"
+          },
+          {
+            "name": "index_consommations_ingredientId",
+            "unique": false,
+            "columnNames": [
+              "ingredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_consommations_ingredientId` ON `${TABLE_NAME}` (`ingredientId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "fournees",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fourneeId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "ingredients",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "ingredientId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "mouvements_stock",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `ingredientId` TEXT NOT NULL, `ingredientNom` TEXT NOT NULL, `dateHeure` INTEGER NOT NULL, `type` TEXT NOT NULL, `quantite` REAL NOT NULL, `motif` TEXT NOT NULL, `montant` INTEGER, `fournisseur` TEXT NOT NULL, `estAchat` INTEGER NOT NULL, `mode` TEXT, `annule` INTEGER NOT NULL, `unite` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`ingredientId`) REFERENCES `ingredients`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingredientId",
+            "columnName": "ingredientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingredientNom",
+            "columnName": "ingredientNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateHeure",
+            "columnName": "dateHeure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantite",
+            "columnName": "quantite",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "motif",
+            "columnName": "motif",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "montant",
+            "columnName": "montant",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fournisseur",
+            "columnName": "fournisseur",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "estAchat",
+            "columnName": "estAchat",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "annule",
+            "columnName": "annule",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unite",
+            "columnName": "unite",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_mouvements_stock_ingredientId",
+            "unique": false,
+            "columnNames": [
+              "ingredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouvements_stock_ingredientId` ON `${TABLE_NAME}` (`ingredientId`)"
+          },
+          {
+            "name": "index_mouvements_stock_dateHeure",
+            "unique": false,
+            "columnNames": [
+              "dateHeure"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouvements_stock_dateHeure` ON `${TABLE_NAME}` (`dateHeure`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "ingredients",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "ingredientId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "clients",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `telephone` TEXT NOT NULL, `quartier` TEXT NOT NULL, `plafondCreance` INTEGER NOT NULL, `type` TEXT NOT NULL, `archive` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nom",
+            "columnName": "nom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "telephone",
+            "columnName": "telephone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quartier",
+            "columnName": "quartier",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plafondCreance",
+            "columnName": "plafondCreance",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archive",
+            "columnName": "archive",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "commandes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `clientId` TEXT, `clientNom` TEXT NOT NULL, `nonPrevu` INTEGER NOT NULL, `date` INTEGER NOT NULL, `heureSouhaitee` TEXT NOT NULL, `livreeA` INTEGER, `echeance` INTEGER NOT NULL, `archive` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`clientId`) REFERENCES `clients`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientId",
+            "columnName": "clientId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "clientNom",
+            "columnName": "clientNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonPrevu",
+            "columnName": "nonPrevu",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heureSouhaitee",
+            "columnName": "heureSouhaitee",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "livreeA",
+            "columnName": "livreeA",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "echeance",
+            "columnName": "echeance",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archive",
+            "columnName": "archive",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_commandes_clientId",
+            "unique": false,
+            "columnNames": [
+              "clientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_commandes_clientId` ON `${TABLE_NAME}` (`clientId`)"
+          },
+          {
+            "name": "index_commandes_date",
+            "unique": false,
+            "columnNames": [
+              "date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_commandes_date` ON `${TABLE_NAME}` (`date`)"
+          },
+          {
+            "name": "index_commandes_echeance",
+            "unique": false,
+            "columnNames": [
+              "echeance"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_commandes_echeance` ON `${TABLE_NAME}` (`echeance`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "clients",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "clientId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "lignes_commande",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `commandeId` TEXT NOT NULL, `produitId` TEXT NOT NULL, `nomProduit` TEXT NOT NULL, `quantite` INTEGER NOT NULL, `prixUnitaireFige` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`commandeId`) REFERENCES `commandes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`produitId`) REFERENCES `produits`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commandeId",
+            "columnName": "commandeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "produitId",
+            "columnName": "produitId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nomProduit",
+            "columnName": "nomProduit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantite",
+            "columnName": "quantite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prixUnitaireFige",
+            "columnName": "prixUnitaireFige",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_lignes_commande_commandeId",
+            "unique": false,
+            "columnNames": [
+              "commandeId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lignes_commande_commandeId` ON `${TABLE_NAME}` (`commandeId`)"
+          },
+          {
+            "name": "index_lignes_commande_produitId",
+            "unique": false,
+            "columnNames": [
+              "produitId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lignes_commande_produitId` ON `${TABLE_NAME}` (`produitId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "commandes",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "commandeId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "produits",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "produitId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "paiements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `numero` TEXT NOT NULL, `clientId` TEXT NOT NULL, `clientNom` TEXT NOT NULL, `commandeId` TEXT, `montant` INTEGER NOT NULL, `dateHeure` INTEGER NOT NULL, `mode` TEXT, `type` TEXT NOT NULL, `note` TEXT NOT NULL, `annule` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`clientId`) REFERENCES `clients`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`commandeId`) REFERENCES `commandes`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientId",
+            "columnName": "clientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientNom",
+            "columnName": "clientNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commandeId",
+            "columnName": "commandeId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "montant",
+            "columnName": "montant",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateHeure",
+            "columnName": "dateHeure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "annule",
+            "columnName": "annule",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_paiements_clientId",
+            "unique": false,
+            "columnNames": [
+              "clientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paiements_clientId` ON `${TABLE_NAME}` (`clientId`)"
+          },
+          {
+            "name": "index_paiements_commandeId",
+            "unique": false,
+            "columnNames": [
+              "commandeId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paiements_commandeId` ON `${TABLE_NAME}` (`commandeId`)"
+          },
+          {
+            "name": "index_paiements_dateHeure",
+            "unique": false,
+            "columnNames": [
+              "dateHeure"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paiements_dateHeure` ON `${TABLE_NAME}` (`dateHeure`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "clients",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "clientId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "commandes",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "commandeId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "fournisseurs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `nom` TEXT NOT NULL, `telephone` TEXT NOT NULL, `adresse` TEXT NOT NULL, `delai` TEXT NOT NULL, `archive` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nom",
+            "columnName": "nom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "telephone",
+            "columnName": "telephone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "adresse",
+            "columnName": "adresse",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "delai",
+            "columnName": "delai",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archive",
+            "columnName": "archive",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "achats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `fournisseurId` TEXT, `fournisseurNom` TEXT NOT NULL, `ingredientId` TEXT NOT NULL, `ingredientNom` TEXT NOT NULL, `dateHeure` INTEGER NOT NULL, `quantite` REAL NOT NULL, `montant` INTEGER, `mode` TEXT, `echeance` INTEGER, `annule` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`ingredientId`) REFERENCES `ingredients`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fournisseurId",
+            "columnName": "fournisseurId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fournisseurNom",
+            "columnName": "fournisseurNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingredientId",
+            "columnName": "ingredientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ingredientNom",
+            "columnName": "ingredientNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateHeure",
+            "columnName": "dateHeure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantite",
+            "columnName": "quantite",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "montant",
+            "columnName": "montant",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "echeance",
+            "columnName": "echeance",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "annule",
+            "columnName": "annule",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_achats_ingredientId",
+            "unique": false,
+            "columnNames": [
+              "ingredientId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_achats_ingredientId` ON `${TABLE_NAME}` (`ingredientId`)"
+          },
+          {
+            "name": "index_achats_dateHeure",
+            "unique": false,
+            "columnNames": [
+              "dateHeure"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_achats_dateHeure` ON `${TABLE_NAME}` (`dateHeure`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "ingredients",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "ingredientId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "paiements_fournisseur",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `fournisseurId` TEXT, `fournisseurNom` TEXT NOT NULL, `achatId` TEXT, `montant` INTEGER NOT NULL, `dateHeure` INTEGER NOT NULL, `mode` TEXT NOT NULL, `note` TEXT NOT NULL, `annule` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fournisseurId",
+            "columnName": "fournisseurId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fournisseurNom",
+            "columnName": "fournisseurNom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "achatId",
+            "columnName": "achatId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "montant",
+            "columnName": "montant",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateHeure",
+            "columnName": "dateHeure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "annule",
+            "columnName": "annule",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_paiements_fournisseur_fournisseurNom",
+            "unique": false,
+            "columnNames": [
+              "fournisseurNom"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paiements_fournisseur_fournisseurNom` ON `${TABLE_NAME}` (`fournisseurNom`)"
+          },
+          {
+            "name": "index_paiements_fournisseur_achatId",
+            "unique": false,
+            "columnNames": [
+              "achatId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paiements_fournisseur_achatId` ON `${TABLE_NAME}` (`achatId`)"
+          },
+          {
+            "name": "index_paiements_fournisseur_dateHeure",
+            "unique": false,
+            "columnNames": [
+              "dateHeure"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_paiements_fournisseur_dateHeure` ON `${TABLE_NAME}` (`dateHeure`)"
+          }
+        ]
+      },
+      {
+        "tableName": "depenses",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `categorie` TEXT NOT NULL, `montant` INTEGER NOT NULL, `note` TEXT NOT NULL, `dateHeure` INTEGER NOT NULL, `mode` TEXT NOT NULL, `annule` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categorie",
+            "columnName": "categorie",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "montant",
+            "columnName": "montant",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateHeure",
+            "columnName": "dateHeure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "annule",
+            "columnName": "annule",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '776bc9fe352368ec11c8c99f49f35fb6')"
+    ]
+  }
+}

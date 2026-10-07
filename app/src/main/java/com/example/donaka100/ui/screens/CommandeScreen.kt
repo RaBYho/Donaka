@@ -63,13 +63,13 @@ fun CommandeScreen(
     onCreancesOuvert: () -> Unit = {},
 ) {
     val etat by vm.etat.collectAsStateWithLifecycle()
+    val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var dialogue by remember { mutableStateOf<Dialogue?>(null) }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
-    LaunchedEffect(Unit) { vm.actualiser() }
 
     LaunchedEffect(ouvrirCreances) {
         if (ouvrirCreances) {
@@ -78,7 +78,11 @@ fun CommandeScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    DonakaPullRefresh(
+        isRefreshing = isRefreshing,
+        onRefresh = vm::actualiser
+    ) {
+        Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Column(
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
@@ -173,6 +177,7 @@ fun CommandeScreen(
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+}
 
     when (val d = dialogue) {
         null -> Unit
